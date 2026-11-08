@@ -11,6 +11,10 @@
 #define MODE_HOST_SOF        0x06
 #define MODE_HOST_RESET      0x07
 
+/* Command operation status, datasheet "State code" table */
+#define CMD_RET_SUCCESS      0x51
+#define CMD_RET_ABORT        0x5F
+
 /* Interrupt status codes, datasheet section 5.12 */
 #define USB_INT_SUCCESS     0x14
 #define USB_INT_CONNECT     0x15
@@ -31,6 +35,7 @@ extern ch375_get_status();
 extern ch375_wait_int();
 extern ch375_set_usb_mode();
 extern ch375_rd_usb_data();
+extern ch375_rd_usb_data_q();
 extern ch375_disk_init();
 extern ch375_disk_size();
 extern ch375_disk_read();

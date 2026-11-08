@@ -1,96 +1,28 @@
-/* CH375 low-level driver library for BCC (K&R C).
- * CH375 mapped at I/O 807Dh (command port) / 807Eh (data port).
+/* CH375 CLI-only layer: debug dump via printf and the unsigned-long
+ * based disk_size()/disk_read() - neither can be linked into the
+ * device driver (no stdio, no BCC unsigned-long runtime helpers), so
+ * they live here rather than in ch375core.c. The driver-safe
+ * primitives (write_cmd, write_data, read_data, get_ic_ver,
+ * check_exist, get_status, wait_int, set_usb_mode, rd_usb_data_q) are
+ * in ch375core.c and used directly from here too - no duplication.
  */
 
 #include "port.h"
 #include "ch375.h"
 
-#define CH375_CMD 0x807D
-#define CH375_DAT 0x807E
-
-#define CMD_GET_IC_VER   0x01
-#define CMD_CHECK_EXIST  0x06
-#define CMD_SET_USB_MODE 0x15
-#define CMD_GET_STATUS   0x22
 #define CMD_RD_USB_DATA  0x28
 #define CMD_DISK_INIT    0x51
 #define CMD_DISK_SIZE    0x53
 #define CMD_DISK_READ    0x54
 #define CMD_DISK_RD_GO   0x55
 
-ch375_write_cmd(cmd)
-unsigned char cmd;
-{
-    port_out(CH375_CMD, cmd);
-}
-
-ch375_write_data(b)
-unsigned char b;
-{
-    port_out(CH375_DAT, b);
-}
-
-ch375_read_data()
-{
-    return port_in(CH375_DAT);
-}
-
-/* Reads the command port without issuing any command first. Per the
- * datasheet (6.2.1), this returns the "interrupt token" byte where
- * bit 7 mirrors the INT# pin - bits 0-6 are undocumented.
- */
-ch375_read_cmd_token()
-{
-    return port_in(CH375_CMD);
-}
-
-ch375_get_ic_ver()
-{
-    ch375_write_cmd(CMD_GET_IC_VER);
-    return ch375_read_data();
-}
-
-ch375_check_exist(b)
-unsigned char b;
-{
-    ch375_write_cmd(CMD_CHECK_EXIST);
-    ch375_write_data(b);
-    return ch375_read_data();
-}
-
-ch375_get_status()
-{
-    ch375_write_cmd(CMD_GET_STATUS);
-    return ch375_read_data();
-}
-
-/* Poll the command port until bit 7 goes low (INT# active). For use
- * only in front of commands the datasheet marks as "Produce
- * interruption" (DISK_INIT, DISK_SIZE, ...) - the command itself runs
- * asynchronously and GET_STATUS must not be issued before it actually
- * completes, or it just echoes a stale/unrelated status.
- */
-ch375_wait_int()
-{
-    while (ch375_read_cmd_token() & 0x80)
-        ;
-}
-
-ch375_set_usb_mode(mode)
-unsigned char mode;
-{
-    ch375_write_cmd(CMD_SET_USB_MODE);
-    ch375_write_data(mode);
-    return ch375_read_data();
-}
-
-/* RD_USB_DATA (datasheet 5.13): reads whatever data block is queued
- * in the chip's current interrupt endpoint buffer. First byte read is
- * the block length (0-64), followed by exactly that many data bytes -
- * stores them into buf and returns the length. When debug is nonzero,
- * prints each byte read, since queued blocks left over from a prior
- * command (e.g. DISK_INIT's internal INQUIRY) have been a recurring
- * source of confusion.
+/* RD_USB_DATA (datasheet 5.13) with an optional per-byte debug dump -
+ * CLI-only wrapper around the same protocol as ch375_rd_usb_data_q()
+ * in ch375core.c, duplicated here (not delegated) only because this
+ * version also prints via printf, which the core module must stay
+ * free of. Queued blocks left over from a prior command (e.g.
+ * DISK_INIT's internal INQUIRY) have been a recurring source of
+ * confusion, hence the debug option.
  */
 ch375_rd_usb_data(buf, debug)
 unsigned char *buf;
@@ -119,12 +51,14 @@ unsigned char debug;
  * issued (and succeed) before DISK_SIZE or any other storage command -
  * without it the chip has no storage device session to act on and
  * DISK_SIZE fails with USB_INT_DISK_ERR. Returns the completion
- * status from GET_STATUS (USB_INT_SUCCESS on success).
+ * status from GET_STATUS (USB_INT_SUCCESS on success), or
+ * USB_INT_DISK_ERR if wait_int() timed out.
  */
 ch375_disk_init()
 {
     ch375_write_cmd(CMD_DISK_INIT);
-    ch375_wait_int();
+    if (!ch375_wait_int())
+        return USB_INT_DISK_ERR;
     return ch375_get_status();
 }
 
@@ -152,7 +86,8 @@ ch375_disk_size()
     unsigned char buf[8];
 
     ch375_write_cmd(CMD_DISK_SIZE);
-    ch375_wait_int();
+    if (!ch375_wait_int())
+        return USB_INT_DISK_ERR;
     status = ch375_get_status();
     if (status != USB_INT_SUCCESS)
         return status;
@@ -185,7 +120,8 @@ ch375_disk_size()
  * (failure). For a 512-byte sector this is documented as 8 data
  * interrupts followed by 1 final one (9 total).
  *
- * Returns the final completion status (USB_INT_SUCCESS on success).
+ * Returns the final completion status (USB_INT_SUCCESS on success),
+ * or USB_INT_DISK_ERR if wait_int() ever times out.
  */
 ch375_disk_read(lba, buf)
 unsigned long lba;
@@ -204,7 +140,8 @@ unsigned char *buf;
     offset = 0;
 
     for (;;) {
-        ch375_wait_int();
+        if (!ch375_wait_int())
+            return USB_INT_DISK_ERR;
         status = ch375_get_status();
 
         if (status == USB_INT_DISK_READ) {
