@@ -2,8 +2,8 @@
 
 BUILD_DIR := build
 
-CH375_SRC := src/ch375.c src/port.c
-CH375_HDR := src/port.h
+CH375_SRC := src/ch375cli.c src/disk.c src/ch375.c src/port.c
+CH375_HDR := src/disk.h src/ch375.h src/port.h
 CH375_BIN := $(BUILD_DIR)/CH375.COM
 
 BCC ?= bcc

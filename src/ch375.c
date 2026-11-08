@@ -1,8 +1,9 @@
-/* CH375 minimal presence test for Atari Portfolio, BCC (K&R C)
- * CH375 mapped at I/O 807Dh (command port) / 807Eh (data port)
+/* CH375 low-level driver library for BCC (K&R C).
+ * CH375 mapped at I/O 807Dh (command port) / 807Eh (data port).
  */
 
 #include "port.h"
+#include "ch375.h"
 
 #define CH375_CMD 0x807D
 #define CH375_DAT 0x807E
@@ -16,23 +17,6 @@
 #define CMD_DISK_SIZE    0x53
 #define CMD_DISK_READ    0x54
 #define CMD_DISK_RD_GO   0x55
-#define CHECK_BYTE       0x5A
-
-/* SET_USB_MODE mode codes, datasheet section 5.9 */
-#define MODE_DEVICE_INVALID  0x00 /* default after power-up/reset */
-#define MODE_DEVICE_EXT      0x01
-#define MODE_DEVICE_INNER    0x02
-#define MODE_HOST_INVALID    0x04
-#define MODE_HOST_NO_SOF     0x05
-#define MODE_HOST_SOF        0x06
-#define MODE_HOST_RESET      0x07
-
-/* Interrupt status codes, datasheet section 5.12 */
-#define USB_INT_SUCCESS     0x14
-#define USB_INT_CONNECT     0x15
-#define USB_INT_DISCONNECT  0x16
-#define USB_INT_DISK_READ   0x1D
-#define USB_INT_DISK_ERR    0x1F
 
 ch375_write_cmd(cmd)
 unsigned char cmd;
@@ -103,10 +87,10 @@ unsigned char mode;
 /* RD_USB_DATA (datasheet 5.13): reads whatever data block is queued
  * in the chip's current interrupt endpoint buffer. First byte read is
  * the block length (0-64), followed by exactly that many data bytes -
- * stores them into buf and returns the length. Prints each read for
- * debugging, since queued blocks left over from a prior command (e.g.
- * DISK_INIT's internal INQUIRY) have been a recurring source of
- * confusion.
+ * stores them into buf and returns the length. When debug is nonzero,
+ * prints each byte read, since queued blocks left over from a prior
+ * command (e.g. DISK_INIT's internal INQUIRY) have been a recurring
+ * source of confusion.
  */
 ch375_rd_usb_data(buf, debug)
 unsigned char *buf;
@@ -122,7 +106,7 @@ unsigned char debug;
         buf[i] = ch375_read_data();
         if (debug) {
             printf(" %02x", buf[i]);
-        }    
+        }
     }
 
     printf("\n");
@@ -175,7 +159,7 @@ ch375_disk_size()
 
     if (ch375_rd_usb_data(buf, 1) != 8) { /* expected length 8 */
         return status;
-    } 
+    }
     /* Measured off by one against fdisk/dmesg on every tested flash
      * disk - the raw value is the last valid LBA, not a sector count.
      */
@@ -232,100 +216,5 @@ unsigned char *buf;
         }
 
         return status; /* USB_INT_SUCCESS or USB_INT_DISK_ERR */
-    }
-}
-
-/* MBR partition table: 4 entries of 16 bytes starting at offset 446
- * (0x1BE). Layout: +0 boot indicator, +4 partition type, +8 LBA
- * start (little-endian), +12 sector count (little-endian).
- */
-ch375_print_mbr_partition(sector0, n)
-unsigned char *sector0;
-int n;
-{
-    unsigned char *entry;
-    unsigned long lba_start, sectors;
-
-    entry = sector0 + 446 + n * 16;
-    lba_start = ((unsigned long) entry[11] << 24) | ((unsigned long) entry[10] << 16)
-              | ((unsigned long) entry[9] << 8) | entry[8];
-    sectors = ((unsigned long) entry[15] << 24) | ((unsigned long) entry[14] << 16)
-            | ((unsigned long) entry[13] << 8) | entry[12];
-
-    printf("  partition %d: boot=%02x type=%02x lba_start=%lu sectors=%lu\n",
-           n, entry[0], entry[4], lba_start, sectors);
-}
-
-/* Runs the full sequence once a USB device connect is seen:
- * DISK_INIT, DISK_SIZE, then DISK_READ sector 0 and print its MBR
- * partition table. Each step bails out (return) on failure instead of
- * nesting further ifs.
- */
-ch375_on_connect()
-{
-    int status, n;
-    unsigned char sector0[512];
-
-    status = ch375_disk_init();
-    printf("  DISK_INIT status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
-
-    status = ch375_disk_size();
-    printf("  DISK_SIZE status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
-
-    printf("  sectors: %lu\n", sector_count);
-    printf("  sector size: %lu\n", sector_size);
-    printf("  disk size: %luB\n", sector_size * sector_count);
-
-    status = ch375_disk_read(0L, sector0);
-    printf("  DISK_READ LBA0 status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
-
-    printf("  MBR signature: %02x %02x\n", sector0[510], sector0[511]);
-    for (n = 0; n < 4; n++)
-        ch375_print_mbr_partition(sector0, n);
-}
-
-/* Diagnostic: poll the command port in a loop, print the byte
- * whenever it changes. No command is issued for this part - it
- * observes whatever is naturally present on the command port over
- * time, including bits 0-6 the datasheet leaves undocumented.
- *
- * Whenever bit 7 goes low (INT# active, interrupt pending), also
- * issue GET_STATUS and print the resulting status byte, to see what
- * condition actually triggered it.
- */
-main()
-{
-    int cur, prev, status;
-
-    /* CH375 boots into invalid USB-DEVICE mode; USB-HOST mode must be
-     * enabled explicitly before plugging in a device triggers any
-     * interrupt at all. Bus reset (07h) first, then enable with auto
-     * SOF (06h), per datasheet section 5.9.
-     */
-    printf("SET_USB_MODE reset: %02x\n", ch375_set_usb_mode(MODE_HOST_RESET));
-    printf("SET_USB_MODE sof: %02x\n", ch375_set_usb_mode(MODE_HOST_SOF));
-
-    prev = -1;
-
-    for (;;) {
-        cur = ch375_read_cmd_token();
-        if (cur != prev) {
-            printf("CMD port: %02x\n", cur);
-            prev = cur;
-
-            if ((cur & 0x80) == 0) {
-                status = ch375_get_status();
-                printf("  GET_STATUS: %02x\n", status);
-
-                if (status == USB_INT_CONNECT)
-                    ch375_on_connect();
-            }
-        }
     }
 }
