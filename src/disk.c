@@ -1,61 +1,82 @@
-/* MBR partition parsing and the "USB device connected" sequence,
- * built on top of the ch375.c/ch375.h chip library.
+/* Presentation helpers (printf, `unsigned long`) for the ch375disk.c
+ * disk-level layer. CLI-only - uses printf and unsigned long, neither
+ * available in the device driver build, so this file is never linked
+ * into CH375.SYS. Takes the hi/lo structures ch375disk.c/.h produce
+ * and prints them in human-readable form; no CH375 protocol logic of
+ * its own.
  */
 
 #include "ch375.h"
+#include "ch375disk.h"
 #include "disk.h"
 
-/* MBR partition table: 4 entries of 16 bytes starting at offset 446
- * (0x1BE). Layout: +0 boot indicator, +4 partition type, +8 LBA
- * start (little-endian), +12 sector count (little-endian).
- */
-disk_print_mbr_partition(sector0, n)
-unsigned char *sector0;
-int n;
+/* Combines an hi/lo unsigned int pair (ch375disk.c's 32-bit
+ * representation) into an `unsigned long`, for printf("%lu", ...)
+ * display only - never used by the driver-safe layer itself. */
+unsigned long disk_hilo_to_long(hi, lo)
+unsigned int hi;
+unsigned int lo;
 {
-    unsigned char *entry;
-    unsigned long lba_start, sectors;
-
-    entry = sector0 + 446 + n * 16;
-    lba_start = ((unsigned long) entry[11] << 24) | ((unsigned long) entry[10] << 16)
-              | ((unsigned long) entry[9] << 8) | entry[8];
-    sectors = ((unsigned long) entry[15] << 24) | ((unsigned long) entry[14] << 16)
-            | ((unsigned long) entry[13] << 8) | entry[12];
-
-    printf("  partition %d: boot=%02x type=%02x lba_start=%lu sectors=%lu\n",
-           n, entry[0], entry[4], lba_start, sectors);
+    return (((unsigned long) hi) << 16) | (unsigned long) lo;
 }
 
-/* Runs the full sequence once a USB device connect is seen:
- * DISK_INIT, DISK_SIZE, then DISK_READ sector 0 and print its MBR
- * partition table. Each step bails out (return) on failure instead of
- * nesting further ifs.
- */
-disk_on_connect()
+void disk_print_capacity()
 {
-    int status, n;
-    unsigned char sector0[512];
+    unsigned long sectors, size, bytes;
 
-    status = ch375_disk_init();
-    printf("  DISK_INIT status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
+    sectors = disk_hilo_to_long(ch375disk_sector_count_hi, ch375disk_sector_count_lo);
+    size = disk_hilo_to_long(ch375disk_sector_size_hi, ch375disk_sector_size_lo);
+    bytes = sectors * size;
 
-    status = ch375_disk_size();
-    printf("  DISK_SIZE status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
+    printf("sect:%lu sz:%lu\n", sectors, size);
+    printf("%luMB\n", bytes / 1048576UL);
+}
 
-    printf("  sectors: %lu\n", sector_count);
-    printf("  sector size: %lu\n", sector_size);
-    printf("  disk size: %luB\n", sector_size * sector_count);
+void disk_print_mbr_partition(part, n)
+struct ch375disk_part *part;
+int n;
+{
+    unsigned long start, sectors, mb;
 
-    status = ch375_disk_read(0L, sector0);
-    printf("  DISK_READ LBA0 status: %02x\n", status);
-    if (status != USB_INT_SUCCESS)
-        return;
+    start = disk_hilo_to_long(part->lba_start_hi, part->lba_start_lo);
+    sectors = disk_hilo_to_long(part->sectors_hi, part->sectors_lo);
+    mb = (sectors * 512UL) / 1048576UL;
 
-    printf("  MBR signature: %02x %02x\n", sector0[510], sector0[511]);
-    for (n = 0; n < 4; n++)
-        disk_print_mbr_partition(sector0, n);
+    if (mb > 0)
+        printf("%d t%02x s%lu %luMB\n", n, part->type, start, mb);
+    else
+        printf("%d t%02x s%lu %lusec\n", n, part->type, start, sectors);
+}
+
+void disk_print_bpb(bpb)
+struct ch375disk_bpb *bpb;
+{
+    printf("bps%u spc%u rs%u\n", bpb->bytes_per_sector,
+           (unsigned int) bpb->sectors_per_cluster, bpb->reserved_sectors);
+    printf("fat%u re%u ts%u\n", (unsigned int) bpb->fat_count,
+           bpb->root_entries, bpb->total_sectors);
+    printf("md%02x spf%u\n", (unsigned int) bpb->media_descriptor,
+           bpb->sectors_per_fat);
+}
+
+void disk_print_fat12_verdict(reason)
+int reason;
+{
+    switch (reason) {
+    case CH375DISK_FAT12_OK:
+        printf("OK FAT12\n");
+        break;
+    case CH375DISK_FAT12_BAD_TYPE:
+        printf("unsupported: type\n");
+        break;
+    case CH375DISK_FAT12_BAD_BPB:
+        printf("unsupported: BPB\n");
+        break;
+    case CH375DISK_FAT12_TOO_BIG:
+        printf("unsupported: >32MB\n");
+        break;
+    default:
+        printf("unsupported\n");
+        break;
+    }
 }

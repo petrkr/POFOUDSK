@@ -2,8 +2,8 @@
 
 BUILD_DIR := build
 
-CH375_SRC := src/ch375cli.c src/disk.c src/ch375.c src/ch375core.c src/port.c
-CH375_HDR := src/disk.h src/ch375.h src/port.h
+CH375_SRC := src/ch375cli.c src/disk.c src/ch375disk.c src/ch375core.c src/port.c
+CH375_HDR := src/disk.h src/ch375disk.h src/ch375.h src/port.h
 CH375_BIN := $(BUILD_DIR)/CH375.COM
 
 CH375SYS_SRC := src/ch375sys.c
@@ -41,18 +41,19 @@ $(CH375_BIN): $(CH375_SRC) $(CH375_HDR) | $(BUILD_DIR)
 # -b always places .data before .text regardless of source order,
 # which would push the hand-written header away from offset 0; ld86
 # -d keeps .text/.data/.bss in source order instead. Links against
-# ch375core.c (not ch375.c) - see that file's comment for why: full
-# ch375.c pulls in printf and unsigned-long runtime helpers a device
-# driver can't link against; ch375core.c holds only the driver-safe
-# primitives.
-$(CH375SYS_BIN): src/ch375sys.c src/ch375core.c src/port.c src/ch375.h src/port.h src/ch375sys_version.h | $(BUILD_DIR)
+# ch375core.c and ch375disk.c (both driver-safe: no printf, no
+# unsigned-long runtime helpers) - never disk.c, which pulls in printf
+# and unsigned-long helpers a device driver can't link against.
+$(CH375SYS_BIN): src/ch375sys.c src/ch375core.c src/ch375disk.c src/port.c src/ch375.h src/ch375disk.h src/port.h src/ch375sys_version.h | $(BUILD_DIR)
 	$(BCC) -0 -Md -S -o $(BUILD_DIR)/ch375sys_bcc.s src/ch375sys.c
 	$(BCC) -0 -Md -S -o $(BUILD_DIR)/ch375core_bcc.s src/ch375core.c
+	$(BCC) -0 -Md -S -o $(BUILD_DIR)/ch375disk_bcc.s src/ch375disk.c
 	$(BCC) -0 -Md -S -o $(BUILD_DIR)/port_bcc.s src/port.c
 	$(AS86) -0 -u -o $(BUILD_DIR)/ch375sys.o $(BUILD_DIR)/ch375sys_bcc.s
 	$(AS86) -0 -u -o $(BUILD_DIR)/ch375core.o $(BUILD_DIR)/ch375core_bcc.s
+	$(AS86) -0 -u -o $(BUILD_DIR)/ch375disk.o $(BUILD_DIR)/ch375disk_bcc.s
 	$(AS86) -0 -u -o $(BUILD_DIR)/port_lib.o $(BUILD_DIR)/port_bcc.s
-	$(LD86) -0 -d -o $@ $(BUILD_DIR)/ch375sys.o $(BUILD_DIR)/ch375core.o $(BUILD_DIR)/port_lib.o
+	$(LD86) -0 -d -o $@ $(BUILD_DIR)/ch375sys.o $(BUILD_DIR)/ch375core.o $(BUILD_DIR)/ch375disk.o $(BUILD_DIR)/port_lib.o
 
 # Assumes the bridge (or ESP smart-cable client) is already running at
 # HOST:PORT and the Portfolio is sitting in File Transfer Server mode.

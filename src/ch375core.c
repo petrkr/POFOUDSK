@@ -1,8 +1,10 @@
 /* CH375 low-level primitives safe to link into the device driver
  * (CH375.SYS) as well as the CLI - no stdio, no unsigned-long BCC
- * runtime helpers. ch375.c builds on top of these for the CLI-only
- * parts (debug dump via printf, long-based disk_size/disk_read).
- * CH375 mapped at I/O 807Dh (command port) / 807Eh (data port).
+ * runtime helpers. ch375disk.c builds the driver-safe disk-level
+ * layer (DISK_SIZE, streaming sector read, MBR/BPB parsing) on top of
+ * these; disk.c then adds CLI-only printf/unsigned-long presentation
+ * on top of that. CH375 mapped at I/O 807Dh (command port) / 807Eh
+ * (data port).
  */
 
 #include "port.h"
@@ -99,12 +101,48 @@ unsigned char mode;
     return ch375_read_data();
 }
 
+/* Busy-wait roughly ms milliseconds. UNTUNED: DELAY_LOOPS_PER_MS is a
+ * guess for the 4.9 MHz 80C88, erring on the long side - measure on
+ * HW before relying on exact timing. */
+#define DELAY_LOOPS_PER_MS 200U
+
+ch375_delay_ms(ms)
+unsigned int ms;
+{
+    unsigned int i;
+    unsigned char sink;
+
+    while (ms-- != 0) {
+        for (i = 0; i < DELAY_LOOPS_PER_MS; i++)
+            sink = (unsigned char) i; /* keep the loop from being trivial */
+    }
+}
+
+/* Delay between bus reset (mode 07h) and enable (mode 06h) - the
+ * reset must actually last on the bus. Found necessary on HW with the
+ * original ch375.asm (delay_long between the two mode switches);
+ * the exact length used there wasn't recorded, 50 ms is a safe
+ * guess. */
+#define HOST_RESET_MS 50
+
+/* Datasheet 5.9: "enter mode 7 first and then switch to mode 6".
+ * Returns 1 if both mode switches reported CMD_RET_SUCCESS. */
+ch375_host_reset()
+{
+    if (ch375_set_usb_mode(MODE_HOST_RESET) != CMD_RET_SUCCESS)
+        return 0;
+    ch375_delay_ms(HOST_RESET_MS);
+    if (ch375_set_usb_mode(MODE_HOST_SOF) != CMD_RET_SUCCESS)
+        return 0;
+    return 1;
+}
+
 /* RD_USB_DATA (datasheet 5.13): reads whatever data block is queued
  * in the chip's current interrupt endpoint buffer. First byte read is
  * the block length (0-64), followed by exactly that many data bytes -
- * stores them into buf and returns the length. Non-printing variant -
- * the CLI's own ch375_rd_usb_data() in ch375.c wraps this with a
- * printf debug dump; the driver can't link printf at all.
+ * stores them into buf and returns the length. Non-printing - used
+ * directly by ch375disk.c's driver-safe layer (DISK_SIZE, streaming
+ * sector read); the driver can't link printf at all.
  */
 ch375_rd_usb_data_q(buf)
 unsigned char *buf;

@@ -22,8 +22,10 @@
 #define USB_INT_DISK_READ   0x1D
 #define USB_INT_DISK_ERR    0x1F
 
-extern unsigned long sector_count;
-extern unsigned long sector_size;
+/* Not a chip code: returned by ch375disk.c when ch375_wait_int()
+ * timed out, so a dead/unresponsive chip is distinguishable from a
+ * real USB_INT_DISK_ERR reported by the chip. */
+#define CH375_TIMEOUT       0xFF
 
 extern ch375_write_cmd();
 extern ch375_write_data();
@@ -34,8 +36,6 @@ extern ch375_check_exist();
 extern ch375_get_status();
 extern ch375_wait_int();
 extern ch375_set_usb_mode();
-extern ch375_rd_usb_data();
+extern ch375_delay_ms();
+extern ch375_host_reset();
 extern ch375_rd_usb_data_q();
-extern ch375_disk_init();
-extern ch375_disk_size();
-extern ch375_disk_read();

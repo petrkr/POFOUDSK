@@ -1,6 +1,9 @@
-/* MBR partition parsing and the "USB device connected" sequence,
- * built on top of the ch375.c/ch375.h chip library.
+/* Presentation helpers (printf, unsigned long) built on top of the
+ * driver-safe ch375disk.c layer - CLI-only, see disk.c.
  */
 
-extern disk_print_mbr_partition();
-extern disk_on_connect();
+extern unsigned long disk_hilo_to_long();
+extern void disk_print_capacity();
+extern void disk_print_mbr_partition();
+extern void disk_print_bpb();
+extern void disk_print_fat12_verdict();
