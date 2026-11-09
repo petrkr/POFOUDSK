@@ -15,12 +15,16 @@
  *     partition.
  *
  * Output is kept to short lines - the Portfolio screen is 40x8;
- * redirect to a file with `>` for the full dump.
+ * redirect to a file with `>` for the full dump. No printf - lines
+ * are built with lib/pofo tinylib's fmt() into out_line (disk.c) and
+ * written with con_puts().
  */
 
 #include "ch375.h"
 #include "ch375disk.h"
 #include "disk.h"
+#include "tinylib.h"
+#include "tinynum.h"
 
 #define IOCTL_SIG_LEN 13
 
@@ -105,32 +109,52 @@ static unsigned char v1_buf[IOCTL_V1_LEN];
 /* Prints the per-unit summary lines from an already-fetched v1_buf -
  * one line per unit, drive letter = first_letter + unit index (see
  * ch375driver.md "Pn mapovani"). */
+static unsigned int get16(p)
+unsigned char *p;
+{
+    return (unsigned int) p[0] | ((unsigned int) p[1] << 8);
+}
+
+/* "Drv X: vM.m.p stSS" - driver identification from the v0 part of
+ * an IOCTL reply, into out_line; returns the terminator position so
+ * the caller can append. */
+static char *put_drv(first_letter, r)
+char first_letter;
+unsigned char *r;
+{
+    char *p;
+
+    p = fmt(out_line, "Drv ");
+    *p++ = first_letter;
+    return fmt(p, ": v%u.%u.%u st%x", r[8], r[9], r[10], r[11]);
+}
+
 static void print_units(first_letter, unit_count)
 char first_letter;
 unsigned char unit_count;
 {
-    unsigned char n, base, status, part_type;
-    unsigned int size_hi, size_lo;
-    unsigned long mb;
+    unsigned char n, status;
+    unsigned char *u;
+    char *p;
 
-    for (n = 0; n < unit_count; n++) {
-        base = IOCTL_SIG_LEN + 3 + 8 + 16 + 4 + n * 10;
-        part_type = v1_buf[base + 0];
-        status = v1_buf[base + 1];
-        size_hi = (unsigned int) v1_buf[base + 6] | ((unsigned int) v1_buf[base + 7] << 8);
-        size_lo = (unsigned int) v1_buf[base + 8] | ((unsigned int) v1_buf[base + 9] << 8);
+    u = v1_buf + IOCTL_SIG_LEN + 3 + 8 + 16 + 4;
+    for (n = 0; n < unit_count; n++, u += 10) {
+        status = u[1];
 
-        printf("%c: P%u ", first_letter + n, n + 1);
-        if (status == CH375DISK_UNIT_REAL) {
-            mb = (disk_hilo_to_long(size_hi, size_lo) * 512UL) / 1048576UL;
-            printf("t%02x %luMB OK\n", (unsigned int) part_type, mb);
-        } else if (status == CH375DISK_UNIT_EMPTY) {
-            printf("empty\n");
-        } else if (status == CH375DISK_UNIT_GPT) {
-            printf("GPT unsup\n");
-        } else {
-            printf("t%02x unsup\n", (unsigned int) part_type);
-        }
+        p = out_line;
+        *p++ = first_letter + n;
+        p = fmt(p, ": P%u ", n + 1);
+        if (status == CH375DISK_UNIT_EMPTY)
+            fmt(p, "empty\r\n");
+        else if (status == CH375DISK_UNIT_GPT)
+            fmt(p, "GPT unsup\r\n");
+        else if (status == CH375DISK_UNIT_REAL) {
+            p = fmt(p, "t%x ", u[0]);
+            p = put_mb(p, get16(u + 6), get16(u + 8));
+            fmt(p, " OK\r\n");
+        } else
+            fmt(p, "t%x unsup\r\n", u[0]);
+        con_puts(out_line);
     }
 }
 
@@ -145,9 +169,7 @@ static unsigned char try_driver_mode()
     unsigned int ax;
     char first_letter;
     char vend[9], prod[17];
-    unsigned char usb_mounted, unit_count;
-    unsigned int cap_hi, cap_lo;
-    unsigned long mb;
+    unsigned char unit_count;
 
     for (drive = 1; drive <= 5; drive++) {
         for (i = 0; i < IOCTL_SIG_LEN; i++)
@@ -170,9 +192,8 @@ static unsigned char try_driver_mode()
         if (dos_carry) {
             /* Driver too old for v1 (or the call failed outright) -
              * fall back to the v0-only line. */
-            printf("Drv %c: v%u.%u.%u st%02x\n", first_letter,
-                   (unsigned int) ioctl_buf[8], (unsigned int) ioctl_buf[9],
-                   (unsigned int) ioctl_buf[10], (unsigned int) ioctl_buf[11]);
+            fmt(put_drv(first_letter, ioctl_buf), "\r\n");
+            con_puts(out_line);
             return 1;
         }
 
@@ -180,25 +201,19 @@ static unsigned char try_driver_mode()
         if (unit_count == 0 || unit_count > 4)
             unit_count = 1;
 
-        printf("Drv %c: v%u.%u.%u st%02x n%u\n", first_letter,
-               (unsigned int) v1_buf[8], (unsigned int) v1_buf[9],
-               (unsigned int) v1_buf[10], (unsigned int) v1_buf[11],
-               (unsigned int) unit_count);
+        fmt(put_drv(first_letter, v1_buf), " n%u\r\n", unit_count);
+        con_puts(out_line);
 
-        usb_mounted = v1_buf[13];
-        if (usb_mounted) {
+        if (v1_buf[13]) { /* usb_state */
             for (i = 0; i < 8; i++)
                 vend[i] = v1_buf[16 + i];
             vend[8] = 0;
             for (i = 0; i < 16; i++)
                 prod[i] = v1_buf[24 + i];
             prod[16] = 0;
-            printf("%s %s\n", vend, prod);
-
-            cap_hi = (unsigned int) v1_buf[40] | ((unsigned int) v1_buf[41] << 8);
-            cap_lo = (unsigned int) v1_buf[42] | ((unsigned int) v1_buf[43] << 8);
-            mb = (disk_hilo_to_long(cap_hi, cap_lo) * 512UL) / 1048576UL;
-            printf("%luMB\n", mb);
+            fmt(put_mb(fmt(out_line, "%s %s\r\n", vend, prod),
+                       get16(v1_buf + 40), get16(v1_buf + 42)), "\r\n");
+            con_puts(out_line);
         }
 
         print_units(first_letter, unit_count);
@@ -206,6 +221,24 @@ static unsigned char try_driver_mode()
     }
 
     return 0;
+}
+
+/* "<s><hex byte>" status line. */
+static void print_hex(s, v)
+char *s;
+unsigned char v;
+{
+    fmt(out_line, "%s%x\r\n", s, v);
+    con_puts(out_line);
+}
+
+/* TEST_CONNECT (16h) result, printed in direct mode to learn the real
+ * codes the driver's MEDIA_CHECK resync relies on (USB_INT_USB_READY
+ * = 18h is unverified). */
+static int test_connect()
+{
+    ch375_write_cmd(0x16);
+    return ch375_read_data();
 }
 
 static void direct_hw_mode()
@@ -218,69 +251,74 @@ static void direct_hw_mode()
     unsigned char boot_jump;
 
     if (!pid_check()) {
-        printf("No PID card\n");
+        con_puts("No PID card\r\n");
         return;
     }
 
     if (ch375_check_exist(0x5A) != (unsigned char)~0x5A) {
-        printf("Not CH375\n");
+        con_puts("Not CH375\r\n");
         return;
     }
 
     ver = ch375_get_ic_ver();
-    printf("CH375 ver%02x\n", (unsigned int) ver);
+    print_hex("CH375 ver", ver);
 
     if (!ch375_host_reset()) {
-        printf("USB mode fail\n");
+        con_puts("USB mode fail\r\n");
         return;
     }
 
-    printf("Wait USB...\n");
+    print_hex("TC0 ", test_connect());
+    con_puts("Wait USB...\r\n");
     status = ch375disk_detect();
     if (status == USB_INT_DISCONNECT) {
-        printf("No USB disk\n");
+        con_puts("No USB disk\r\n");
         return;
     }
     if (status != USB_INT_SUCCESS) {
-        printf("DISK_INIT %02x\n", status);
+        print_hex("DISK_INIT ", status);
         return;
     }
-    printf("%s %s\n", ch375disk_vendor, ch375disk_product);
+    fmt(out_line, "%s %s TC1 %x\r\n", ch375disk_vendor, ch375disk_product, test_connect());
+    con_puts(out_line);
 
     status = ch375disk_size();
     if (status != USB_INT_SUCCESS) {
-        printf("DISK_SIZE %02x (%d tries)\n", status, ch375disk_size_tries);
+        fmt(out_line, "DISK_SIZE %x (%u tries)\r\n", status, ch375disk_size_tries);
+        con_puts(out_line);
         return;
     }
-    if (ch375disk_size_tries > 1)
-        printf("DISK_SIZE ok, try %d\n", ch375disk_size_tries);
+    if (ch375disk_size_tries > 1) {
+        fmt(out_line, "DISK_SIZE ok, try %u\r\n", ch375disk_size_tries);
+        con_puts(out_line);
+    }
     disk_print_capacity();
 
     status = ch375disk_read_mbr(0, 0, &mbr);
     if (status != USB_INT_SUCCESS) {
-        printf("MBR read %02x\n", status);
+        print_hex("MBR read ", status);
         return;
     }
 
     if (mbr.is_superfloppy) {
-        printf("no MBR, superfloppy\n");
+        con_puts("no MBR, superfloppy\r\n");
     } else if (mbr.has_mbr_sig) {
         for (n = 0; n < CH375DISK_PART_COUNT; n++)
             if (mbr.part[n].type != 0)
                 disk_print_mbr_partition(&mbr.part[n], n);
     } else {
-        printf("no MBR sig\n");
+        con_puts("no MBR sig\r\n");
     }
 
     part_type = ch375disk_pick_volume(&mbr, &start_hi, &start_lo, &sectors_hi, &sectors_lo);
     if (part_type == CH375DISK_NO_VOLUME) {
-        printf("no partition\n");
+        con_puts("no partition\r\n");
         return;
     }
 
     status = ch375disk_read_bpb(start_hi, start_lo, &bpb, &boot_jump);
     if (status != USB_INT_SUCCESS) {
-        printf("BPB read %02x\n", status);
+        print_hex("BPB read ", status);
         return;
     }
 

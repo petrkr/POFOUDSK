@@ -20,7 +20,14 @@
 #define USB_INT_CONNECT     0x15
 #define USB_INT_DISCONNECT  0x16
 #define USB_INT_DISK_READ   0x1D
+#define USB_INT_DISK_WRITE  0x1E
 #define USB_INT_DISK_ERR    0x1F
+
+/* TEST_CONNECT (5.10) "device connected and initialized" result code -
+ * not in this project's copy of the datasheet. WCH's own CH375 headers
+ * commonly use 0x18; taken on faith, UNVERIFIED on real HW. See
+ * ch375driver.md "TEST_CONNECT resync". */
+#define USB_INT_USB_READY   0x18
 
 /* Not a chip code: returned by ch375disk.c when ch375_wait_int()
  * timed out, so a dead/unresponsive chip is distinguishable from a

@@ -1,14 +1,17 @@
-/* ch375disk.c - driver-safe disk-level layer on top of ch375core.c's
- * CH375 primitives: USB media detect, DISK_SIZE, streaming sector
- * read, MBR partition table parsing, superfloppy detection, boot
- * sector BPB extraction and FAT12 suitability check.
+/* Disk-level layer on top of ch375core.c's CH375 primitives, split
+ * into three units sharing this header:
+ *   - ch375disk.c (driver-safe): DISK_INIT, DISK_SIZE, REQUEST SENSE,
+ *     streaming single-sector read/write,
+ *   - ch375part.c (driver-safe): MBR partition table, superfloppy
+ *     detection, boot sector BPB, FAT12 suitability check,
+ *   - ch375det.c (CLI only): blocking connect wait/detect and
+ *     first-usable-volume pick.
  *
  * All 32-bit values (LBA, sector counts) are hi/lo unsigned int pairs,
  * never `unsigned long` - same convention as
  * src/ch375sys_version.h's BUILD_ID_HI/LO. No printf, no 512-byte
- * sector buffer - this file must stay linkable into CH375.SYS as well
- * as CH375.COM. Only CH375.COM links it in for now (see Makefile);
- * wiring it into CH375.SYS is a later phase.
+ * sector buffer - driver-safe units must stay linkable into
+ * CH375.SYS as well as CH375.COM.
  */
 
 /* ch375disk_detect()/ch375disk_wait_connect() return one of the
@@ -40,6 +43,20 @@ extern char ch375disk_product[];
  */
 extern ch375disk_read_sector(/* lba_hi, lba_lo, handler */);
 
+/* Streaming sector write: issues DISK_WRITE for one LBA (hi/lo), then
+ * for each USB_INT_DISK_WRITE interrupt issues WR_USB_DATA7 and calls
+ * supplier(offset, 64), which must write the length byte then the 64
+ * data bytes to the data port, before DISK_WR_GO. Returns
+ * USB_INT_SUCCESS, USB_INT_DISK_ERR, or CH375_TIMEOUT - same
+ * conventions as ch375disk_read_sector(). */
+extern ch375disk_write_sector(/* lba_hi, lba_lo, supplier */);
+
+/* SCSI REQUEST SENSE (DISK_R_SENSE) - clears a pending check condition
+ * (e.g. after a controller reset). Exported so the driver can retry a
+ * failed READ/WRITE once after calling this - see ch375driver.md
+ * "TEST_CONNECT resync". */
+extern ch375disk_request_sense();
+
 /* DOS 2.x BPB, extracted from boot sector bytes 0x0B..0x17 (13
  * bytes). */
 struct ch375disk_bpb {
@@ -55,14 +72,17 @@ struct ch375disk_bpb {
 
 /* One MBR partition table entry (16 bytes at 0x1BE + n*16). LBA start
  * and sector count are 32-bit little-endian fields in the MBR, split
- * here into hi/lo unsigned int halves. */
+ * here into lo/hi unsigned int halves. Field order is load-bearing:
+ * two chars then four ints (no BCC padding) in lo,hi order is exactly
+ * the entry's bytes 8..15 in memory, so ch375disk_read_mbr() copies
+ * them verbatim. */
 struct ch375disk_part {
     unsigned char boot_flag; /* 0x00 or 0x80 in a valid entry */
     unsigned char type;
-    unsigned int lba_start_hi;
     unsigned int lba_start_lo;
-    unsigned int sectors_hi;
+    unsigned int lba_start_hi;
     unsigned int sectors_lo;
+    unsigned int sectors_hi;
 };
 
 #define CH375DISK_PART_COUNT 4
@@ -78,6 +98,13 @@ struct ch375disk_mbr {
     unsigned char is_superfloppy;
     struct ch375disk_bpb bpb0;    /* BPB as read from sector 0 */
 };
+
+/* Raw DOS 2.x BPB wire layout (boot sector bytes 0x0B..0x17) of the
+ * sector last read by ch375disk_read_mbr()/ch375disk_read_bpb() - valid
+ * until the next such read. CH375.SYS copies it verbatim as a unit's
+ * BUILD_BPB reply. */
+#define CH375DISK_BPB_RAW_LEN 13
+extern unsigned char ch375disk_bpb_raw[];
 
 /* Reads LBA (hi/lo) and fills *mbr from the MBR partition table and
  * signature bytes. Returns the streaming read's completion status;
