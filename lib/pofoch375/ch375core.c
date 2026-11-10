@@ -1,10 +1,7 @@
 /* CH375 primitives (no libc, no long). */
 
-#include "port.h"
+#include "transport.h"
 #include "ch375.h"
-
-#define CH375_CMD 0x807D
-#define CH375_DAT 0x807E
 
 #define CMD_GET_IC_VER   0x01
 #define CMD_CHECK_EXIST  0x06
@@ -15,47 +12,24 @@
 /* Bounded wait_int() loop - untuned, not measured on HW. */
 #define WAIT_INT_MAX_ITER 60000U
 
-ch375_write_cmd(cmd)
-unsigned char cmd;
-{
-    port_out(CH375_CMD, cmd);
-}
-
-ch375_write_data(b)
-unsigned char b;
-{
-    port_out(CH375_DAT, b);
-}
-
-ch375_read_data()
-{
-    return port_in(CH375_DAT);
-}
-
-/* Command port read without a command: bit 7 = INT# (datasheet 6.2.1). */
-ch375_read_cmd_token()
-{
-    return port_in(CH375_CMD);
-}
-
 ch375_get_ic_ver()
 {
-    ch375_write_cmd(CMD_GET_IC_VER);
-    return ch375_read_data();
+    tr_cmd(CMD_GET_IC_VER);
+    return tr_rdata();
 }
 
 ch375_check_exist(b)
 unsigned char b;
 {
-    ch375_write_cmd(CMD_CHECK_EXIST);
-    ch375_write_data(b);
-    return ch375_read_data();
+    tr_cmd(CMD_CHECK_EXIST);
+    tr_wdata(b);
+    return tr_rdata();
 }
 
 ch375_get_status()
 {
-    ch375_write_cmd(CMD_GET_STATUS);
-    return ch375_read_data();
+    tr_cmd(CMD_GET_STATUS);
+    return tr_rdata();
 }
 
 /* Waits for INT# after a command marked "Produce interruption" -
@@ -66,7 +40,7 @@ ch375_wait_int()
     unsigned int i;
 
     for (i = 0; i < WAIT_INT_MAX_ITER; i++) {
-        if ((ch375_read_cmd_token() & 0x80) == 0)
+        if ((tr_token() & 0x80) == 0)
             return 1;
     }
     return 0;
@@ -75,9 +49,9 @@ ch375_wait_int()
 ch375_set_usb_mode(mode)
 unsigned char mode;
 {
-    ch375_write_cmd(CMD_SET_USB_MODE);
-    ch375_write_data(mode);
-    return ch375_read_data();
+    tr_cmd(CMD_SET_USB_MODE);
+    tr_wdata(mode);
+    return tr_rdata();
 }
 
 /* Busy wait, ~ms milliseconds. DELAY_LOOPS_PER_MS is a guess for the
@@ -116,11 +90,11 @@ unsigned char *buf;
 {
     int len, i;
 
-    ch375_write_cmd(CMD_RD_USB_DATA);
-    len = ch375_read_data();
+    tr_cmd(CMD_RD_USB_DATA);
+    len = tr_rdata();
 
     for (i = 0; i < len; i++)
-        buf[i] = ch375_read_data();
+        buf[i] = tr_rdata();
 
     return len;
 }

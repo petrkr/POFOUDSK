@@ -5,6 +5,7 @@
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "transport.h"
 #include "part.h"
 #include "pofoudsk.h"
 #include "disk.h"
@@ -46,27 +47,6 @@ ioctl_cf_done:
     pop cx
     pop bx
     pop bp
-#endasm
-}
-
-/* INT 61h/1Ah: 1 if the CH375 PID card is present - required before
- * any port access. */
-#define PID_ID_CH375 0x75
-
-static unsigned char pid_check()
-{
-#asm
-    mov ah,#0x1A
-    int 0x61
-    or al,al
-    jz cli_pid_absent
-    cmp ah,#PID_ID_CH375
-    jne cli_pid_absent
-    mov al,#1
-    jmp cli_pid_done
-cli_pid_absent:
-    xor al,al
-cli_pid_done:
 #endasm
 }
 
@@ -203,7 +183,7 @@ static void direct_hw_mode()
     struct ch375disk_bpb bpb;
     unsigned char boot_jump;
 
-    if (!pid_check()) {
+    if (!tr_present()) {
         con_puts("No PID card\r\n");
         return;
     }

@@ -1,7 +1,7 @@
 /* CH375 disk commands: DISK_INIT, DISK_SIZE, REQUEST SENSE, single-sector
  * READ/WRITE streamed in 64-byte chunks (no sector buffer). */
 
-#include "port.h"
+#include "transport.h"
 #include "ch375.h"
 #include "ch375disk.h"
 
@@ -69,7 +69,7 @@ ch375disk_init()
 {
     int status;
 
-    ch375_write_cmd(CMD_DISK_INIT);
+    tr_cmd(CMD_DISK_INIT);
     if (!ch375_wait_int())
         return CH375_TIMEOUT;
     status = norm_status(ch375_get_status());
@@ -85,7 +85,7 @@ ch375disk_request_sense()
     unsigned char buf[64];
     int status, n;
 
-    ch375_write_cmd(CMD_DISK_R_SENSE);
+    tr_cmd(CMD_DISK_R_SENSE);
     if (!ch375_wait_int())
         return CH375_TIMEOUT;
     status = norm_status(ch375_get_status());
@@ -121,7 +121,7 @@ static int disk_size_once()
     unsigned char buf[8];
     unsigned int hi, lo;
 
-    ch375_write_cmd(CMD_DISK_SIZE);
+    tr_cmd(CMD_DISK_SIZE);
     if (!ch375_wait_int())
         return CH375_TIMEOUT;
     status = norm_status(ch375_get_status());
@@ -155,12 +155,12 @@ int (*handler)();
     unsigned int offset;
     unsigned char chunk[64];
 
-    ch375_write_cmd(CMD_DISK_READ);
-    ch375_write_data((unsigned char) lba_lo);
-    ch375_write_data((unsigned char) (lba_lo >> 8));
-    ch375_write_data((unsigned char) lba_hi);
-    ch375_write_data((unsigned char) (lba_hi >> 8));
-    ch375_write_data(1); /* sector count */
+    tr_cmd(CMD_DISK_READ);
+    tr_wdata((unsigned char) lba_lo);
+    tr_wdata((unsigned char) (lba_lo >> 8));
+    tr_wdata((unsigned char) lba_hi);
+    tr_wdata((unsigned char) (lba_hi >> 8));
+    tr_wdata(1); /* sector count */
 
     offset = 0;
 
@@ -173,7 +173,7 @@ int (*handler)();
             len = ch375_rd_usb_data_q(chunk);
             (*handler)(offset, chunk, len);
             offset += len;
-            ch375_write_cmd(CMD_DISK_RD_GO);
+            tr_cmd(CMD_DISK_RD_GO);
             continue;
         }
 
@@ -191,12 +191,12 @@ int (*supplier)();
     int status;
     unsigned int offset;
 
-    ch375_write_cmd(CMD_DISK_WRITE);
-    ch375_write_data((unsigned char) lba_lo);
-    ch375_write_data((unsigned char) (lba_lo >> 8));
-    ch375_write_data((unsigned char) lba_hi);
-    ch375_write_data((unsigned char) (lba_hi >> 8));
-    ch375_write_data(1); /* sector count */
+    tr_cmd(CMD_DISK_WRITE);
+    tr_wdata((unsigned char) lba_lo);
+    tr_wdata((unsigned char) (lba_lo >> 8));
+    tr_wdata((unsigned char) lba_hi);
+    tr_wdata((unsigned char) (lba_hi >> 8));
+    tr_wdata(1); /* sector count */
 
     offset = 0;
 
@@ -206,9 +206,9 @@ int (*supplier)();
         status = ch375_get_status();
 
         if (status == USB_INT_DISK_WRITE) {
-            ch375_write_cmd(CMD_WR_USB_DATA7);
+            tr_cmd(CMD_WR_USB_DATA7);
             (*supplier)(offset, 64);
-            ch375_write_cmd(CMD_DISK_WR_GO);
+            tr_cmd(CMD_DISK_WR_GO);
             offset += 64;
             continue;
         }

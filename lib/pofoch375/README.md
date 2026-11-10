@@ -17,9 +17,15 @@ application code.
   `DISK_SIZE`, `REQUEST SENSE`, single-sector `READ`/`WRITE` streamed in
   64-byte chunks. 32-bit values are hi/lo `unsigned int` pairs.
 - `ch375det.c` - blocking, bounded wait for a USB disk + `DISK_INIT`.
-- `port.c`, `port.h` - `in`/`out` for BCC.
+- `transport.h` - bus transport interface (`tr_*`), implementation
+  selected at link time.
+- `tr_pid.c` - PID card transport: I/O `807Dh` (command) / `807Eh`
+  (data), the Atari Portfolio PID card wiring.
 
 ## Transport
 
-`port.c` accesses I/O `807Dh` (command) / `807Eh` (data), the Atari
-Portfolio PID card wiring. Another transport needs its own `port.c`.
+All CH375 bus access goes through `transport.h` (`tr_present`,
+`tr_cmd`, `tr_wdata`, `tr_rdata`, `tr_token`, `tr_wdata_far`). Today
+only `tr_pid.c` exists. Another transport (e.g. serial/parallel) adds
+its own `tr_*.c` and is selected via the Makefile's `TRANSPORT`
+variable.

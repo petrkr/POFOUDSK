@@ -9,8 +9,12 @@ POFOLIB := lib/pofo
 # CH375 chip library (driver-safe, no dependency on src/).
 POFOCH375 := lib/pofoch375
 
-POFOUDSK_COM_SRC := src/ch375cli.c src/disk.c src/part.c src/partpick.c $(POFOCH375)/ch375det.c $(POFOCH375)/ch375disk.c $(POFOCH375)/ch375core.c $(POFOCH375)/port.c $(POFOLIB)/tinylib.c
-POFOUDSK_COM_HDR := src/disk.h src/part.h src/pofoudsk.h $(POFOCH375)/ch375disk.h $(POFOCH375)/ch375.h $(POFOCH375)/port.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c $(POFOLIB)/tinyhex.c $(POFOLIB)/tinydec.c
+# Bus transport unit (today: PID card). A new transport (e.g. tr_com,
+# tr_lpt) is a one-variable change.
+TRANSPORT := tr_pid
+
+POFOUDSK_COM_SRC := src/ch375cli.c src/disk.c src/part.c src/partpick.c $(POFOCH375)/ch375det.c $(POFOCH375)/ch375disk.c $(POFOCH375)/ch375core.c $(POFOCH375)/$(TRANSPORT).c $(POFOLIB)/tinylib.c
+POFOUDSK_COM_HDR := src/disk.h src/part.h src/pofoudsk.h $(POFOCH375)/ch375disk.h $(POFOCH375)/ch375.h $(POFOCH375)/transport.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c $(POFOLIB)/tinyhex.c $(POFOLIB)/tinydec.c
 POFOUDSK_COM_BIN := $(BUILD_DIR)/POFOUDSK.COM
 
 POFOUDSK_SYS_BIN := $(BUILD_DIR)/POFOUDSK.SYS
@@ -50,7 +54,7 @@ $(POFOUDSK_COM_BIN): $(POFOUDSK_COM_SRC) $(POFOUDSK_COM_HDR) | $(BUILD_DIR)
 # POFOUDSK.SYS: as86 -u + ld86 -0 -d keeps .text/.data/.bss in link order
 # (as86 -b would put .data first and move the device header off offset
 # 0). Driver-safe units only - no libc, no long helpers.
-SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk part port
+SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk part $(TRANSPORT)
 SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinyhex.o $(BUILD_DIR)/sysdirfix.o
 SYS_HDR := $(POFOCH375)/ch375.h $(POFOCH375)/ch375disk.h $(POFOCH375)/transport.h src/part.h src/pofoudsk.h $(POFOLIB)/tinynum.h src/sys.h src/version.h src/build_id.h
 

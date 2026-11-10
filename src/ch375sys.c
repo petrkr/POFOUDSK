@@ -5,6 +5,7 @@
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "transport.h"
 #include "pofoudsk.h"
 #include "tinynum.h"
 #include "sys.h"
@@ -310,8 +311,8 @@ static real_chunk_supplier(offset, len)
 unsigned int offset;
 unsigned int len;
 {
-    ch375_write_data((unsigned char) len);
-    far_out(buf_seg, buf_off + offset, len);
+    tr_wdata((unsigned char) len);
+    tr_wdata_far(buf_seg, buf_off + offset, len);
 }
 
 static int rw_sector(is_write, lba_hi, lba_lo)

@@ -29,10 +29,8 @@ extern void poke_b();
 extern void poke_w();
 extern void far_copy();
 extern void far_fill();
-extern void far_out();
 extern unsigned int get_cs();
 extern void print_dollar_string();
-extern unsigned char pid_check();
 
 /* --- sysdirfix.asm --- */
 extern dirfix_install();

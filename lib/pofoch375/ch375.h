@@ -1,4 +1,5 @@
-/* CH375 commands and status codes. Ports: 807Dh command, 807Eh data. */
+/* CH375 commands and status codes. Ports belong to the transport
+ * (transport.h, 807Dh command / 807Eh data). */
 
 /* SET_USB_MODE mode codes, datasheet section 5.9 */
 #define MODE_DEVICE_INVALID  0x00 /* default after power-up/reset */
@@ -28,10 +29,6 @@
 /* not a chip code: ch375_wait_int() timed out */
 #define CH375_TIMEOUT       0xFF
 
-extern ch375_write_cmd();
-extern ch375_write_data();
-extern ch375_read_data();
-extern ch375_read_cmd_token();
 extern ch375_get_ic_ver();
 extern ch375_check_exist();
 extern ch375_get_status();

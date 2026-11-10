@@ -1,12 +1,7 @@
-/* Asm helpers: far memory, bulk port output, DOS print, PID check. Each
- * sets up its own bp frame (an #asm-only body gets no BCC prologue);
- * args at 4/6/8/10[bp]. */
+/* Asm helpers: far memory, DOS print. Each sets up its own bp frame
+ * (an #asm-only body gets no BCC prologue); args at 4/6/8/10[bp]. */
 
 #include "sys.h"
-
-/* PID id of the CH375 card (board jumper) */
-#define PID_ID_CH375 0x75
-
 
 unsigned char peek_b(seg, off)
 unsigned int seg;
@@ -150,39 +145,6 @@ unsigned int len;
 #endasm
 }
 
-/* src_seg:src_off -> CH375 data port 807Eh, len bytes. */
-void far_out(src_seg, src_off, len)
-unsigned int src_seg;
-unsigned int src_off;
-unsigned int len;
-{
-#asm
-    push bp
-    mov bp,sp
-    push ds
-    push si
-    push cx
-    push dx
-    mov ax,4[bp]
-    mov ds,ax
-    mov si,6[bp]
-    mov cx,8[bp]
-    mov dx,#0x807E
-    cld
-    jcxz farout_done
-farout_loop:
-    lodsb
-    out dx,al
-    loop farout_loop
-farout_done:
-    pop dx
-    pop cx
-    pop si
-    pop ds
-    pop bp
-#endasm
-}
-
 unsigned int get_cs()
 {
 #asm
@@ -202,23 +164,5 @@ char *s;
     int 0x21
     pop dx
     pop bp
-#endasm
-}
-
-/* INT 61h/1Ah: 1 if a PID card with PID_ID_CH375 is present. */
-unsigned char pid_check()
-{
-#asm
-    mov ah,#0x1A
-    int 0x61
-    or al,al
-    jz pid_absent
-    cmp ah,#PID_ID_CH375
-    jne pid_absent
-    mov al,#1
-    jmp pid_done
-pid_absent:
-    xor al,al
-pid_done:
 #endasm
 }

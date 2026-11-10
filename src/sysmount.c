@@ -4,6 +4,7 @@
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "transport.h"
 #include "part.h"
 #include "pofoudsk.h"
 #include "sys.h"
@@ -225,7 +226,7 @@ static void check_usb_event()
 {
     int status;
 
-    if (ch375_read_cmd_token() & 0x80)
+    if (tr_token() & 0x80)
         return; /* no interrupt pending */
 
     status = ch375_get_status();
@@ -242,10 +243,10 @@ void test_connect_resync()
 {
     unsigned char result;
 
-    ch375_write_cmd(CMD_TEST_CONNECT);
-    result = ch375_read_data();
+    tr_cmd(CMD_TEST_CONNECT);
+    result = tr_rdata();
     if (result == 0)
-        result = ch375_read_data(); /* not finished yet - one re-read */
+        result = tr_rdata(); /* not finished yet - one re-read */
 
     if (result == 0)
         return; /* still not finished - try again next time */
@@ -273,7 +274,7 @@ void guard()
 {
     unsigned char pid_present;
 
-    pid_present = pid_check();
+    pid_present = tr_present();
 
     if (ctrl_state == STATE_CONTROLLER_OK) {
         if (!pid_present) {
