@@ -52,7 +52,7 @@ $(POFOUDSK_COM_BIN): $(POFOUDSK_COM_SRC) $(POFOUDSK_COM_HDR) | $(BUILD_DIR)
 # 0). Driver-safe units only - no libc, no long helpers.
 SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk part port
 SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinyhex.o $(BUILD_DIR)/sysdirfix.o
-SYS_HDR := $(POFOCH375)/ch375.h $(POFOCH375)/ch375disk.h $(POFOCH375)/port.h src/part.h src/pofoudsk.h $(POFOLIB)/tinynum.h src/sys.h src/pofoudsk_version.h
+SYS_HDR := $(POFOCH375)/ch375.h $(POFOCH375)/ch375disk.h $(POFOCH375)/transport.h src/part.h src/pofoudsk.h $(POFOLIB)/tinynum.h src/sys.h src/version.h src/build_id.h
 
 $(BUILD_DIR)/%.o: src/%.c $(SYS_HDR) | $(BUILD_DIR)
 	$(BCC) -0 -Md -I$(POFOLIB) -I$(POFOCH375) -S -o $(BUILD_DIR)/$*_bcc.s $<

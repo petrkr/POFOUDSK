@@ -8,7 +8,8 @@
 #include "pofoudsk.h"
 #include "tinynum.h"
 #include "sys.h"
-#include "pofoudsk_version.h"
+#include "version.h"
+#include "build_id.h"
 
 #define ST_DONE    0x0100
 #define ST_ERROR   0x8000
@@ -211,10 +212,11 @@ static void print_version()
     msg_version[MSG_VER_PATCH_OFFSET] = '0' + POFOUDSK_VERSION_PATCH;
 
     p = msg_version + MSG_VER_BUILDID_OFFSET;
-    p = put_hex2(p, POFOUDSK_BUILD_ID_HI >> 8);
-    p = put_hex2(p, POFOUDSK_BUILD_ID_HI & 0xFF);
-    p = put_hex2(p, POFOUDSK_BUILD_ID_LO >> 8);
-    put_hex2(p, POFOUDSK_BUILD_ID_LO & 0xFF);
+    /* constant shifts - folded by BCC, no long helpers */
+    p = put_hex2(p, (unsigned int) (POFOUDSK_BUILD_ID >> 24) & 0xFF);
+    p = put_hex2(p, (unsigned int) (POFOUDSK_BUILD_ID >> 16) & 0xFF);
+    p = put_hex2(p, (unsigned int) (POFOUDSK_BUILD_ID >> 8) & 0xFF);
+    put_hex2(p, (unsigned int) POFOUDSK_BUILD_ID & 0xFF);
 
     print_dollar_string(msg_version);
 }
