@@ -36,6 +36,8 @@ df_offlo        dw      0               ; byte offset of the sector just written
 df_offhi        dw      0
 df_clus         dw      0               ; directory start cluster
 df_saveax       dw      0
+df_pip          dw      0               ; CS:IP of the previous trap
+df_pcs          dw      0
 
 df_int21:
         cmp     ah, 39h                 ; MKDIR
@@ -50,6 +52,7 @@ df_int21:
 .arm:
         mov     [cs:df_saveax], ax
         mov     byte [cs:df_count], 0
+        mov     word [cs:df_pcs], 0
         mov     byte [cs:df_armed], 1
         pushf                           ; DOS irets/retf 2s back to .back
         push    cs
@@ -87,6 +90,43 @@ df_int1:
         mov     bp, sp                  ; [bp+2] IP, [bp+4] CS, [bp+6] flags
         cmp     byte [cs:df_armed], 0
         je      .stop
+; The 8088 resumes an interrupted multi-prefix string instruction (e.g.
+; ES: REP CMPSB) at its last prefix, dropping the others - with TF that
+; happens after every repetition. If only prefixes lie between the
+; previous trap's IP and this one, go back to the instruction start.
+        push    ax
+        push    si
+        push    ds
+        mov     ax, [bp+4]
+        cmp     ax, [cs:df_pcs]
+        jne     .track
+        mov     si, [cs:df_pip]
+        cmp     si, [bp+2]
+        jae     .track
+        mov     ds, ax
+.prefix:
+        mov     al, [si]
+        mov     ah, al
+        and     ah, 0E7h
+        cmp     ah, 26h                 ; 26/2E/36/3E segment override
+        je      .isprefix
+        and     al, 0FEh
+        cmp     al, 0F2h                ; F2/F3 rep
+        jne     .track
+.isprefix:
+        inc     si
+        cmp     si, [bp+2]
+        jb      .prefix
+        mov     ax, [cs:df_pip]
+        mov     [bp+2], ax
+.track:
+        mov     ax, [bp+2]
+        mov     [cs:df_pip], ax
+        mov     ax, [bp+4]
+        mov     [cs:df_pcs], ax
+        pop     ds
+        pop     si
+        pop     ax
         cmp     word [bp+4], DF_ROM_SEG
         jne     .out
         cmp     word [bp+2], DF_FILL_IP
