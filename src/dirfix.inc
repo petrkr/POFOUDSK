@@ -44,13 +44,69 @@ df_pcs          dw      0
 
 df_int21:
         cmp     ah, 39h                 ; MKDIR
-        je      .arm
+        je      .chkdrv
         cmp     ah, 3Ch                 ; create file
-        je      .arm
+        je      .chkdrv
         cmp     ah, 16h                 ; FCB create
-        je      .arm
+        je      .chkdrv
         cmp     ah, 56h                 ; rename (may move to another dir)
-        je      .arm
+        je      .chkdrv
+        jmp     far [cs:df_old21]
+; Only drives with sectors per cluster > 1 can hit the bug (see header
+; comment) - single-stepping all of DOS is expensive, so look the drive
+; up first and chain untraced for spc <= 1. AX/BX/CX/DX/DS are clobbered
+; by INT 21h AH=1Ch and SI is used as scratch (DX cannot address memory);
+; all are restored, and flags too, before either path is taken, so the
+; chained call sees exactly the caller's registers and flags.
+.chkdrv:
+        pushf
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    ds
+        mov     si, dx                  ; DX cannot address memory - copy to SI
+        mov     bl, 0                   ; default drive
+        cmp     ah, 16h
+        je      .fcb
+        cmp     byte [si+1], ':'        ; DS:SI = ASCIIZ path (orig. DS:DX)
+        jne     .havedrv
+        mov     bl, [si]
+        and     bl, 0DFh                ; uppercase
+        sub     bl, 'A' - 1
+        jmp     .havedrv
+.fcb:
+        cmp     byte [si], 0FFh         ; DS:SI = FCB (orig. DS:DX)
+        jne     .fcbnorm
+        mov     bl, [si+7]              ; extended FCB
+        jmp     .havedrv
+.fcbnorm:
+        mov     bl, [si]
+.havedrv:
+        mov     dl, bl
+        mov     ah, 1Ch                 ; -> AL = sectors per cluster
+        int     21h
+        cmp     al, 0FFh                ; invalid drive - do not trace
+        je      .nospc
+        cmp     al, 1                   ; spc <= 1 - bug cannot occur
+        jbe     .nospc
+        pop     ds
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        popf
+        jmp     .arm
+.nospc:
+        pop     ds
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        popf
         jmp     far [cs:df_old21]
 .arm:
         mov     [cs:df_saveax], ax
