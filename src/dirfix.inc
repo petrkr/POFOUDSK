@@ -12,7 +12,8 @@
 ; for spc > 1 do they run with TF set; the INT 1 handler
 ;   A) at the fill cuts the fill and the saved write length to one sector,
 ;   B) after DOS's write calls E52D:3F23 for the remaining spc-1 sectors.
-; INT 61h returns with `retf 2`, dropping TF - it is hooked to re-arm TF.
+; INT 61h returns with `retf 2`, dropping TF - it is hooked to hand the
+; caller's TF back (code that cleared TF, e.g. a driver, stays unstepped).
 ; df_check verifies the ROM code first. All data is CS-relative.
 
 DF_ROM_SEG      equ     0E52Dh          ; CS of the DOS routines below
@@ -32,14 +33,13 @@ df_old61        dd      0
 df_dosw         dw      DF_WRITE_IP, DF_ROM_SEG ; far pointer to the DOS write
 df_retfip       dw      DF_RETF_IP
 df_backip       dw      df_int1.ret
-df_armed        db      0               ; 1 while the DOS call runs single-stepped
 df_count        db      0               ; sectors still to write after the first
 df_bps          dw      0
 df_offlo        dw      0               ; byte offset of the sector just written
 df_offhi        dw      0
 df_clus         dw      0               ; directory start cluster
 df_saveax       dw      0
-df_pip          dw      0               ; CS:IP of the previous trap
+df_pip          dw      0               ; CS:IP of the previous trap (lds)
 df_pcs          dw      0
 
 df_int21:
@@ -52,67 +52,49 @@ df_int21:
         cmp     ah, 56h                 ; rename (may move to another dir)
         je      .chkdrv
         jmp     far [cs:df_old21]
-; Only drives with sectors per cluster > 1 can hit the bug (see header
-; comment) - single-stepping all of DOS is expensive, so look the drive
-; up first and chain untraced for spc <= 1. AX/BX/CX/DX/DS are clobbered
-; by INT 21h AH=1Ch and SI is used as scratch (DX cannot address memory);
-; all are restored, and flags too, before either path is taken, so the
-; chained call sees exactly the caller's registers and flags.
 .chkdrv:
-        pushf
+; Only spc > 1 can hit the bug and single-stepping DOS is slow: look up
+; the drive's sectors per cluster (INT 21h AH=1Ch) and chain untraced
+; for spc <= 1 or an invalid drive. INT 21h takes no input flags, so
+; only the registers are restored (pops keep the flags of the test).
         push    ax
         push    bx
         push    cx
         push    dx
         push    si
         push    ds
-        mov     si, dx                  ; DX cannot address memory - copy to SI
-        mov     bl, 0                   ; default drive
+        mov     si, dx                  ; DX cannot address memory
+        mov     dl, 0                   ; default drive
         cmp     ah, 16h
         je      .fcb
-        cmp     byte [si+1], ':'        ; DS:SI = ASCIIZ path (orig. DS:DX)
+        cmp     byte [si+1], ':'        ; ASCIIZ path with drive letter?
         jne     .havedrv
-        mov     bl, [si]
-        and     bl, 0DFh                ; uppercase
-        sub     bl, 'A' - 1
+        mov     dl, [si]
+        and     dl, 0DFh                ; uppercase
+        sub     dl, 'A' - 1
         jmp     .havedrv
 .fcb:
-        cmp     byte [si], 0FFh         ; DS:SI = FCB (orig. DS:DX)
-        jne     .fcbnorm
-        mov     bl, [si+7]              ; extended FCB
-        jmp     .havedrv
-.fcbnorm:
-        mov     bl, [si]
+        mov     dl, [si]
+        cmp     dl, 0FFh                ; extended FCB
+        jne     .havedrv
+        mov     dl, [si+7]
 .havedrv:
-        mov     dl, bl
         mov     ah, 1Ch                 ; -> AL = sectors per cluster
         int     21h
-        cmp     al, 0FFh                ; invalid drive - do not trace
-        je      .nospc
-        cmp     al, 1                   ; spc <= 1 - bug cannot occur
-        jbe     .nospc
+        sub     al, 2                   ; spc 2..254 -> 0..252 (trace)
+        cmp     al, 0FDh                ; spc 0/1 -> FE/FF, invalid FFh -> FD
         pop     ds
         pop     si
         pop     dx
         pop     cx
         pop     bx
         pop     ax
-        popf
-        jmp     .arm
-.nospc:
-        pop     ds
-        pop     si
-        pop     dx
-        pop     cx
-        pop     bx
-        pop     ax
-        popf
+        jb      .arm
         jmp     far [cs:df_old21]
 .arm:
         mov     [cs:df_saveax], ax
         mov     byte [cs:df_count], 0
         mov     word [cs:df_pcs], 0
-        mov     byte [cs:df_armed], 1
         pushf                           ; DOS irets/retf 2s back to .back
         push    cs
         mov     ax, .back
@@ -126,20 +108,24 @@ df_int21:
         mov     ax, [cs:df_saveax]
         iret
 .back:
-        mov     byte [cs:df_armed], 0   ; next trap clears TF
-        retf    2                       ; keep DOS's result flags (CF)
-
-df_int61:
-        cmp     byte [cs:df_armed], 0
-        jne     .keep
-        jmp     far [cs:df_old61]
-.keep:
-        pushf
-        call    far [cs:df_old61]       ; BIOS returns with retf 2
-        pushf                           ; result flags + TF for the caller
+        pushf                           ; DOS's result flags (CF) ...
         push    bp
         mov     bp, sp
+        and     byte [bp+3], 0FEh       ; ... without TF - stepping ends
+        pop     bp
+        popf
+        retf    2
+
+df_int61:
+        pushf
+        call    far [cs:df_old61]       ; BIOS returns with retf 2
+        pushf                           ; result flags for the caller ...
+        push    bp
+        mov     bp, sp
+        test    byte [bp+9], 1          ; ... plus the caller's own TF
+        jz      .out
         or      byte [bp+3], 1
+.out:
         pop     bp
         popf
         retf    2
@@ -147,8 +133,6 @@ df_int61:
 df_int1:
         push    bp
         mov     bp, sp                  ; [bp+2] IP, [bp+4] CS, [bp+6] flags
-        cmp     byte [cs:df_armed], 0
-        je      .stop
 ; The 8088 resumes an interrupted multi-prefix string instruction (e.g.
 ; ES: REP CMPSB) at its last prefix, dropping the others - with TF that
 ; happens after every repetition. If only prefixes lie between the
@@ -156,48 +140,53 @@ df_int1:
         push    ax
         push    si
         push    ds
-        mov     ax, [bp+4]
-        cmp     ax, [cs:df_pcs]
-        jne     .track
-        mov     si, [cs:df_pip]
+        lds     si, [cs:df_pip]         ; DS:SI = previous trap CS:IP
+        mov     ax, ds
+        cmp     ax, [bp+4]
+        jne     .newcs
         cmp     si, [bp+2]
         jae     .track
-        mov     ds, ax
 .prefix:
-        mov     al, [si]
+        lodsb
         mov     ah, al
-        and     ah, 0E7h
-        cmp     ah, 26h                 ; 26/2E/36/3E segment override
+        and     al, 0E7h
+        cmp     al, 26h                 ; 26/2E/36/3E segment override
         je      .isprefix
-        and     al, 0FEh
-        cmp     al, 0F2h                ; F2/F3 rep
+        and     ah, 0FEh
+        cmp     ah, 0F2h                ; F2/F3 rep
         jne     .track
 .isprefix:
-        inc     si
         cmp     si, [bp+2]
         jb      .prefix
-        mov     ax, [cs:df_pip]
+        mov     ax, [cs:df_pip]         ; only prefixes - rewind
         mov     [bp+2], ax
+        jmp     .track
+.newcs:
+        mov     ax, [bp+4]
+        mov     [cs:df_pcs], ax
 .track:
         mov     ax, [bp+2]
         mov     [cs:df_pip], ax
-        mov     ax, [bp+4]
-        mov     [cs:df_pcs], ax
+        cmp     ax, DF_FILL_IP          ; IP first - the CS test is rarely needed
+        je      .rom
+        cmp     ax, DF_AFTER_IP
+        je      .rom
+.pop:
         pop     ds
         pop     si
         pop     ax
-        cmp     word [bp+4], DF_ROM_SEG
-        jne     .out
-        cmp     word [bp+2], DF_FILL_IP
-        je      .fill
-        cmp     word [bp+2], DF_AFTER_IP
-        je      .after
-        jmp     .out
-.stop:
-        and     byte [bp+7], 0FEh       ; clear TF
 .out:
         pop     bp
         iret
+.rom:
+        cmp     word [bp+4], DF_ROM_SEG
+        jne     .pop
+        cmp     ax, DF_FILL_IP
+        pop     ds
+        pop     si
+        pop     ax
+        je      .fill
+        jmp     .after
 
 ; A) DS:SI = DPB, DX = dir start cluster, BX = offset high,
 ;    saved [bp+12] = offset low, saved [bp+10] = length, CX = length
@@ -226,7 +215,7 @@ df_int1:
         je      .out
         test    byte [bp+6], 1          ; DOS write failed - leave it
         jnz     .out
-        mov     byte [cs:df_armed], 0   ; no more stepping / re-arming
+        and     byte [bp+7], 0FEh       ; DOS continues unstepped
         sti                             ; INT 1 entry cleared IF
         push    ax
         push    bx
