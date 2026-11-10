@@ -73,6 +73,16 @@ for Atari Portfolio).
   "unverified" and propose how to verify (datasheet `CH375.pdf`, HW
   measurement, test).
 
+## Versioning
+
+- `src/version.h`: MAJOR/MINOR/PATCH. `src/build_id.h`:
+  `POFOUDSK_BUILD_ID`.
+- Bump the build id in every commit, so a build on HW can always be
+  identified. High half `FFFF` = local build; CI overwrites
+  `build_id.h` with the git short hash.
+- Any change of MAJOR/MINOR/PATCH resets the low half of the build id
+  to 1 (high half unchanged).
+
 ## Forks
 
 - If you fork this repository, prefer contributing back via pull
@@ -81,5 +91,9 @@ for Atari Portfolio).
   repository and its author (README, license headers, credits).
 
 ## Docs
+
+- Code, comments and docs must stand on their own: never reference other
+  projects or things outside this repository ("same as ...", "like in
+  ...").
 
 - Code and docs in English.
