@@ -21,7 +21,7 @@
 
 /* Bounded wait_int() loop count - untuned, picked as "clearly more
  * than any observed real CH375 response latency" without measurement
- * on hardware. See ch375driver.md "Timeout v polling smyčkách". */
+ * on hardware. */
 #define WAIT_INT_MAX_ITER 60000U
 
 ch375_write_cmd(cmd)
@@ -79,8 +79,8 @@ ch375_get_status()
  *
  * Returns 1 if the interrupt was seen, 0 on timeout - a timeout means
  * the chip stopped responding and the caller (driver guard state
- * machine) must treat this as a lost controller, see
- * ch375driver.md "Ztráta stavu CH375 při trvale přítomném PID".
+ * machine) must treat this as a lost controller (CH375 lost its state
+ * while the PID card stayed present).
  */
 ch375_wait_int()
 {

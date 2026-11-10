@@ -12,7 +12,7 @@
 
 #define MAX_UNITS     4
 
-/* guard() state machine, see ch375driver.md "Stavovy automat". */
+/* guard() state machine, see sysmount.c guard(). */
 #define STATE_NO_CONTROLLER 0
 #define STATE_CONTROLLER_OK 1
 
@@ -45,6 +45,9 @@ extern void far_out();
 extern unsigned int get_cs();
 extern void print_dollar_string();
 extern unsigned char pid_check();
+
+/* --- sysdirfix.asm --- */
+extern dirfix_install();
 
 /* --- sysmount.c --- */
 extern unsigned char ctrl_state;

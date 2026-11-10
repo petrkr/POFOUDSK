@@ -2,8 +2,7 @@
  * partition mounted, the driver presents this tiny synthetic
  * read-only FAT12 disk instead of refusing I/O: its root directory
  * holds INFO.TXT, explaining the current state (controller/USB/
- * partition status) for that unit. See ch375driver.md "Virtualni INFO
- * disk" for the full sector map and text table.
+ * partition status) for that unit.
  *
  * Sectors are generated on the fly straight into the far DOS transfer
  * buffer: far_fill() zeroes the sector, then the few non-zero bytes
@@ -18,7 +17,7 @@
 /* Virtual disk BPB - real geometry of a disk that actually exists
  * (the synthetic INFO disk), not a placeholder. DOS 2.x builds its
  * DPB from this immediately at INIT and divides by bytes/sector and
- * sectors/cluster, so neither may ever be zero (see sysdriver.md).
+ * sectors/cluster, so neither may ever be zero.
  * Doubles as the boot sector's BPB (sector 0, offset 0x0B). A unit
  * whose mounted partition is CH375DISK_UNIT_REAL gets its own real BPB
  * (unit_bpb[]) via BUILD_BPB instead - whose sector size must never

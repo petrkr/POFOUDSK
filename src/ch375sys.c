@@ -9,21 +9,21 @@
  * connect/disconnect events on every request while CONTROLLER_OK.
  * Never refuses to install even if the controller is absent right now
  * (soft-fail): INIT always reports success regardless of guard()
- * state. See ch375driver.md for the full design.
+ * state.
  *
  * This unit holds the device header, the strategy/interrupt
  * trampolines with the driver's own stack, request dispatch and the
  * DOS command handlers. Units without a usable real partition get the
  * virtual INFO disk (sysvdisk.c). See sys.h for the module split.
  *
- * Reuses the same C+asm split as vdiskc3.c: device header and
- * strategy/interrupt trampolines are hand-written asm here, far memory
- * and port helpers in sysfar.c (BCC has no `far` pointers); everything
- * else is normal C. No stdio - uses int 21h/09h ($-terminated string)
- * like vdiskc3.c, not BCC libc's buffered I/O. The _interrupt
- * trampoline also switches to its own stack (int_stack[]) before
- * calling any C code and restores the caller's SS:SP before retf -
- * see sysdriver.md "SS != DS".
+ * C+asm split: device header and strategy/interrupt trampolines are
+ * hand-written asm here, far memory and port helpers in sysfar.c (BCC
+ * has no `far` pointers); everything else is normal C. No stdio - uses
+ * int 21h/09h ($-terminated string), not BCC libc's buffered I/O. The
+ * _interrupt trampoline also switches to its own stack (int_stack[])
+ * before calling any C code and restores the caller's SS:SP before
+ * retf - BCC code assumes SS == DS, and the DOS caller's stack is
+ * neither ours nor big.
  *
  * Build: see Makefile (sys target) - bcc -S, as86 -u -o, ld86 -0 -d,
  * this object first; links ch375core.c, ch375disk.c, ch375part.c and
@@ -55,7 +55,7 @@
 
 /* MEDIA_CHECK (cmd 1) return byte shares the request packet offset
  * used by INIT's break-address field (0x0E) - a union in the real DOS
- * request packet layout, not a coincidence. See ch375driver.md. */
+ * request packet layout, not a coincidence. */
 #define REQ_MEDIA_RET  0x0E
 
 #define DOS_MEDIA_CHANGED     0xFF /* -1 as a byte: media changed/unknown */
@@ -84,8 +84,7 @@
 #define INT_STACK_SIZE 512
 
 /* Device header must be the literal first bytes of the file - top-
- * level #asm block before any C code/data, same reasoning as
- * vdiskc3.c. `export _start` satisfies ld86's entry point
+ * level #asm block before any C code/data. `export _start` satisfies ld86's entry point
  * requirement even though DOS never calls it. */
 #asm
 export _start
@@ -117,14 +116,18 @@ unsigned char ioctl_last_cmd;
 unsigned char unit_count;
 unsigned char cur_unit;
 
-/* Per-unit "last content id handed to DOS via BUILD_BPB" - see
- * ch375driver.md "MEDIA_CHECK a id obsahu". Encodes (status, mount
+/* /NODIRFIX from CONFIG.SYS - disables the DIRFIX MKDIR/directory-
+ * extension fix (see dirfix.inc). */
+static unsigned char nodirfix;
+
+
+/* Per-unit "last content id handed to DOS via BUILD_BPB". Encodes (status, mount
  * generation) in one unsigned int so swapping one FAT12 flash for
  * another (same verdict, different content) is still seen as
  * "changed" - see current_content_id() in sysmount.c. */
 static unsigned int presented_content_id[MAX_UNITS];
 
-/* Own stack for the driver (see sysdriver.md "SS != DS") - the
+/* Own stack for the driver (BCC code assumes SS == DS) - the
  * _interrupt trampoline switches onto this before calling any BCC-
  * compiled C code, and back onto the caller's SS:SP before retf. A
  * plain static array, so it is ordinary .bss and automatically counted
@@ -136,7 +139,6 @@ static unsigned int saved_sp;
 /* REQ_FIRSTDRIVE (0x16) is a DOS 3.0+ field - DOS 2.x never fills it
  * (confirmed: DOS assigned E:, it read back as 0), so the assigned
  * letter is not printed. */
-static char msg_installed[]  = "CH375.SYS installed\r\n$";
 
 /* "CH375.SYS vM.m.p (build XXXXXXXX)\r\n$" - single-digit M/m/p (0-9,
  * matches version.h's current values) and 8 build-id hex digits
@@ -157,6 +159,8 @@ static char msg_not_found[]  = "CH375 controller not present (ok for now)\r\n$";
 
 static char msg_units[] = "Units: 0\r\n$";
 #define MSG_UNITS_OFFSET 7
+
+static char msg_dirfix_bad[] = "DIRFIX: unsupported ROM\r\n$";
 
 static unsigned int bpb_array[MAX_UNITS];
 
@@ -198,18 +202,38 @@ static void init_state()
 {
     unsigned char i;
 
+
     ioctl_last_cmd = 0;
     unit_count = DEFAULT_UNITS;
     cur_unit = 0;
+    nodirfix = 0;
     init_mount_state();
     for (i = 0; i < MAX_UNITS; i++)
         presented_content_id[i] = CH375DISK_UNIT_NO_CONTROLLER << 8;
 }
 
-/* Parses /N:x from the CONFIG.SYS line DOS passes in the INIT
- * request (far pointer at 0x12, text after "DEVICE=", terminated by
- * CR/LF/NUL). Whether DIP DOS 2.11 passes this pointer at all is
- * unverified - if not, the scan finds no /N: and the default stays. */
+/* Matches an upper-case literal at seg:off, case-insensitively
+ * (letters compared via & 0xDF). Used by parse_cmdline() below. */
+static unsigned char match_word(seg, off, word)
+unsigned int seg;
+unsigned int off;
+char *word;
+{
+    unsigned char c;
+
+    while (*word != 0) {
+        c = peek_b(seg, off++) & 0xDF;
+        if (c != *word++)
+            return 0;
+    }
+    return 1;
+}
+
+/* Scans the whole CONFIG.SYS line DOS passes in the INIT request
+ * (far pointer at 0x12, text after "DEVICE=", terminated by CR/LF/
+ * NUL) for /N:x and /NODIRFIX switches, both case-insensitive.
+ * Whether DIP DOS 2.11 passes this pointer at all is unverified - if
+ * not, the scan finds nothing and the defaults stay. */
 static void parse_cmdline()
 {
     unsigned int seg, off, end;
@@ -224,13 +248,16 @@ static void parse_cmdline()
             return;
         if (c != '/')
             continue;
+        if (match_word(seg, off + 1, "NODIRFIX")) {
+            nodirfix = 1;
+            continue;
+        }
         c = peek_b(seg, off + 1) & 0xDF; /* upper case */
         if (c != 'N' || peek_b(seg, off + 2) != ':')
             continue;
         n = peek_b(seg, off + 3) - '0';
         if (n >= 1 && n <= MAX_UNITS)
             unit_count = n;
-        return;
     }
 }
 
@@ -283,12 +310,13 @@ static void cmd_init()
     req_set(REQ_BPB_OFF, (unsigned int)bpb_array);
     req_set(REQ_BPB_SEG, get_cs());
 
-    print_dollar_string(msg_installed);
     print_version();
+    probe_controller(); /* reports state guard() already set at dispatch entry; soft-fail: never changes REQ_UNITS/status below */
     msg_units[MSG_UNITS_OFFSET] = '0' + unit_count;
     print_dollar_string(msg_units);
 
-    probe_controller(); /* reports state guard() already set at dispatch entry; soft-fail: never changes REQ_UNITS/status below */
+    if (!nodirfix && !dirfix_install())
+        print_dollar_string(msg_dirfix_bad);
 
     /* DOS gets the virtual BPB right here, so the id it was just
      * handed starts out equal to whatever guard() settled on for this
@@ -302,8 +330,7 @@ static void cmd_init()
 /* MEDIA_CHECK (cmd 1) - return byte at REQ_MEDIA_RET. Runs
  * test_connect_resync() first (while CONTROLLER_OK) to catch a
  * CH375 that silently lost its USB host state without ever raising a
- * CONNECT/DISCONNECT interrupt - see ch375driver.md "TEST_CONNECT
- * resync". Then "changed" iff cur_unit's current content id differs
+ * CONNECT/DISCONNECT interrupt. Then "changed" iff cur_unit's current content id differs
  * from what was last handed to DOS through BUILD_BPB - this also
  * catches the controller appearing/disappearing, a USB connect/
  * disconnect, or one FAT12 flash disk being swapped for another,
@@ -322,7 +349,7 @@ static void cmd_media_check()
 /* BUILD_BPB (cmd 2) - DOS does not supply a destination pointer here;
  * it reads the BPB through the far pointer the driver itself writes
  * back at REQ_BPB_OFF/REQ_BPB_SEG (offset = BPB address, segment =
- * CS), same as vdiskc3.c:287-293. There is always a valid disk to
+ * CS). There is always a valid disk to
  * describe (the virtual one if nothing else, else the real partition
  * BPB once it is CH375DISK_UNIT_REAL) - no not-ready error path. */
 static void cmd_build_bpb()
@@ -384,7 +411,7 @@ unsigned int lba_lo;
 /* READ (cmd 4) / WRITE (cmds 8/9) - transfer address dword at
  * REQ_BRK_OFF/SEG (0x0E/0x10), sector count at REQ_BPB_OFF (0x12),
  * start sector at REQ_BPB_SEG (0x14) - same request layout as
- * vdiskc3.c's cmd_read(). The transferred count is always written back
+ * DOS 2.x READ/WRITE request packet. The transferred count is always written back
  * to 0x12; out-of-range stops the transfer with ERR_SECTOR_NOT_FOUND.
  *
  * Virtual disk (unit not CH375DISK_UNIT_REAL): READ generates sectors
@@ -392,10 +419,9 @@ unsigned int lba_lo;
  * real medium to write to.
  *
  * Real unit: physical LBA = partition start (32-bit hi/lo) + DOS
- * sector (16-bit), added with manual hi/lo carry (see ch375driver.md
- * "32bitova LBA"), one sector at a time. A disk error (not a timeout)
- * gets one REQUEST_SENSE + retry of that same sector (see
- * ch375driver.md "TEST_CONNECT resync") before giving up; a lost
+ * sector (16-bit), added with manual hi/lo carry (no long helpers),
+ * one sector at a time. A disk error (not a timeout)
+ * gets one REQUEST_SENSE + retry of that same sector before giving up; a lost
  * controller/USB (CH375_TIMEOUT, USB_INT_DISCONNECT) or a retry that
  * still fails all stop the transfer early. Error codes differ between
  * READ and WRITE only in the final giving-up case (ERR_WRITE_FAULT vs
@@ -480,7 +506,7 @@ unsigned char is_write;
 
 /* IOCTL input (cmd 3, DOS INT 21h/44h/04h "read control data") -
  * transfer address dword at REQ_BRK_OFF/SEG (0x0E/0x10), byte count at
- * REQ_BPB_OFF (0x12). v1 reply layout (see ch375driver.md "IOCTL v1"):
+ * REQ_BPB_OFF (0x12). v1 reply layout:
  * the original 13-byte v0 signature/version/state block is unchanged
  * (offsets 0-12), followed by usb_state, mount_gen, unit_count,
  * vendor[8], product[16], capacity sectors hi/lo, then 4 partitions'
@@ -611,7 +637,7 @@ void dispatch()
 
 /* strategy/interrupt trampolines - top-level #asm labels, not C
  * functions, so BCC's prologue/epilogue never runs here (raw retf
- * required). Same pattern as vdiskc3.c / src/pofo/pofo_edit.c:104-134. */
+ * required). Same pattern as lib/pofo/pofo_edit.c. */
 #asm
 _strategy:
     seg cs

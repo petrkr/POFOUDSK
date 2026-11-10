@@ -12,7 +12,7 @@
 #include "tinynum.h"
 
 /* Line buffer shared by all CLI output - longest line is the
- * vendor/product one (8 + 1 + 16 + " TC1 xx" + CRLF). */
+ * BPB dump (3 lines). */
 char out_line[64];
 
 /* Unsigned 32-bit decimal of hi:lo, by repeated subtraction of each

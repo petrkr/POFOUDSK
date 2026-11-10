@@ -1,6 +1,5 @@
 /* CH375.SYS controller/USB state machine and per-unit mount state -
- * see sys.h and ch375driver.md "Stavovy automat" / "USB event
- * handling" / "Per-unit stav".
+ * see sys.h.
  *
  * USB media mount/unmount is event-driven, not polled by blocking:
  * guard() reads the CH375 interrupt flag (one cheap IN) on every
@@ -103,8 +102,8 @@ void init_mount_state()
 }
 
 /* Drops to NO_CONTROLLER - the single place any CH375 command
- * failure/timeout must call, per ch375driver.md "Ztrata stavu CH375
- * pri trvale pritomnem PID". Callers that also lose the current USB
+ * failure/timeout must call (CH375 lost its state while the PID card
+ * stayed present). Callers that also lose the current USB
  * mount (guard(), mount/read paths) additionally call unmount_all();
  * current_content_id() reads ctrl_state live regardless, so the next
  * MEDIA_CHECK automatically compares against the new (NO_CONTROLLER)
@@ -116,7 +115,7 @@ void drop_controller()
 
 /* Clears all per-unit mount state back to CH375DISK_UNIT_NO_USB and
  * bumps mount_gen - called on USB_INT_DISCONNECT, on any disk-op
- * CH375_TIMEOUT (per ch375driver.md "Ztrata stavu..."), and when the
+ * CH375_TIMEOUT, and when the
  * controller itself is lost (guard()). current_content_id() ignores
  * units[]/mount_gen whenever ctrl_state != CONTROLLER_OK or
  * !usb_state (it reports a fixed id for those cases), so this mainly
@@ -156,8 +155,7 @@ int verdict;
 }
 
 /* Evaluates MBR primary partition entry n (0-based, so DOS unit n =
- * "Pn+1") and sets units[n] accordingly - see ch375driver.md
- * "Per-unit stav". Returns CH375_TIMEOUT if the BPB read itself times
+ * "Pn+1") and sets units[n] accordingly. Returns CH375_TIMEOUT if the BPB read itself times
  * out (caller must drop_controller()+unmount_all), else 0. */
 static int evaluate_partition(n, p)
 unsigned char n;
@@ -203,8 +201,7 @@ struct ch375disk_part *p;
  * DISK_INIT, DISK_SIZE, MBR read, then per-partition evaluation (or
  * the superfloppy special case: unit 0 is the whole-disk FAT12 volume,
  * start 0, size = BPB total sectors, units 1-3 EMPTY). Any
- * CH375_TIMEOUT along the way drops the controller entirely (per
- * ch375driver.md). */
+ * CH375_TIMEOUT along the way drops the controller entirely. */
 static void mount_usb()
 {
     struct ch375disk_mbr mbr;
@@ -288,8 +285,7 @@ static void check_usb_event()
 /* TEST_CONNECT (0x16, datasheet 5.10) - no interrupt, finishes in
  * ~2us. Resyncs ctrl_state/usb_state after an event that leaves the
  * CH375 reset (e.g. Portfolio sleep/wake dropping its power) without
- * ever raising a CONNECT/DISCONNECT interrupt - see ch375driver.md
- * "TEST_CONNECT resync" (UNVERIFIED on real HW, including
+ * ever raising a CONNECT/DISCONNECT interrupt (UNVERIFIED on real HW, including
  * USB_INT_USB_READY's 0x18 value). Called from MEDIA_CHECK only (not
  * every request) while CONTROLLER_OK. */
 void test_connect_resync()
@@ -323,8 +319,7 @@ void test_connect_resync()
     }
 }
 
-/* Runs on every dispatch() entry - see ch375driver.md "Stavovy
- * automat". pid_check() (cheap, BIOS-only) runs every time; the
+/* Runs on every dispatch() entry. pid_check() (cheap, BIOS-only) runs every time; the
  * expensive CH375 HELLO (CHECK_EXIST) + reinit (SET_USB_MODE 07h then
  * 06h) run only on the NO_CONTROLLER -> PID-present transition.
  * check_usb_event() (one cheap IN, expensive GET_STATUS/mount only if
@@ -358,8 +353,7 @@ void guard()
     ctrl_state = STATE_CONTROLLER_OK;
     /* USB media/BPB are not re-scanned on this same request - a flash
      * already plugged in will raise its own CONNECT interrupt, picked
-     * up by check_usb_event() on the *next* request (see
-     * ch375driver.md note on this). */
+     * up by check_usb_event() on the *next* request. */
 }
 
 /* Returns 1 only if unit is both reachable (controller present, USB

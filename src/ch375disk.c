@@ -106,8 +106,7 @@ ch375disk_init()
  * condition (e.g. Unit Attention after reset) so the next command can
  * succeed. Its sense data, if queued, is drained and discarded.
  * Exported (not static) so the driver can call it between a failed
- * READ/WRITE and its one retry - see ch375driver.md "TEST_CONNECT
- * resync". */
+ * READ/WRITE and its one retry. */
 ch375disk_request_sense()
 {
     unsigned char buf[64];

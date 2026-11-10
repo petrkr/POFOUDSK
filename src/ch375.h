@@ -25,8 +25,8 @@
 
 /* TEST_CONNECT (5.10) "device connected and initialized" result code -
  * not in this project's copy of the datasheet. WCH's own CH375 headers
- * commonly use 0x18; taken on faith, UNVERIFIED on real HW. See
- * ch375driver.md "TEST_CONNECT resync". */
+ * commonly use 0x18 - confirmed on the chip (TEST_CONNECT after
+ * DISK_INIT returned 18h). */
 #define USB_INT_USB_READY   0x18
 
 /* Not a chip code: returned by ch375disk.c when ch375_wait_int()

@@ -53,8 +53,7 @@ extern ch375disk_write_sector(/* lba_hi, lba_lo, supplier */);
 
 /* SCSI REQUEST SENSE (DISK_R_SENSE) - clears a pending check condition
  * (e.g. after a controller reset). Exported so the driver can retry a
- * failed READ/WRITE once after calling this - see ch375driver.md
- * "TEST_CONNECT resync". */
+ * failed READ/WRITE once after calling this. */
 extern ch375disk_request_sense();
 
 /* DOS 2.x BPB, extracted from boot sector bytes 0x0B..0x17 (13
@@ -146,7 +145,7 @@ extern ch375disk_fat12_check(/* part_type, sectors_hi, sectors_lo, bpb */);
 /* Per-unit mount status codes - shared by CH375.SYS (src/ch375sys.c,
  * per-unit state array) and the CLI (src/ch375cli.c, IOCTL v1 reply
  * parsing) so both sides agree on the wire values without duplicating
- * the enum. See ch375driver.md "IOCTL v1" / "USB event handling". */
+ * the enum. */
 #define CH375DISK_UNIT_NO_CONTROLLER 0
 #define CH375DISK_UNIT_NO_USB        1
 #define CH375DISK_UNIT_REAL          2

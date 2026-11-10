@@ -1,7 +1,7 @@
 ; DIRFIX core - resident fix for the Atari Portfolio DIP DOS directory
 ; cluster bug on drives with more than one sector per cluster.
 ;
-; The bug (see ch375driver.md "Chyba MKDIR v DIP DOS"): whenever DOS
+; The bug: whenever DOS
 ; adds a cluster to a directory - MKDIR (new directory) or a file /
 ; directory created in a full subdirectory (directory extension) - ROM
 ; routine E52D:189D zeroes a whole cluster (spc * bytes/sector) with

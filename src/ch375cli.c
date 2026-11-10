@@ -95,8 +95,7 @@ cli_pid_done:
 
 static char ioctl_buf[IOCTL_SIG_LEN];
 
-/* IOCTL v1 reply layout (see src/ch375sys.c cmd_ioctl_in(),
- * ch375driver.md "IOCTL v1"): v0's 13-byte signature/version/state
+/* IOCTL v1 reply layout (see src/ch375sys.c cmd_ioctl_in()): v0's 13-byte signature/version/state
  * block, then usb_state(1)/mount_gen(1)/unit_count(1), vendor[8],
  * product[16], capacity sectors hi/lo (2+2), then MAX_UNITS=4 * 10
  * bytes (type, unit status, start hi/lo, size hi/lo). */
@@ -107,8 +106,8 @@ static unsigned char v1_buf[IOCTL_V1_LEN];
  * here only for display, not protocol logic. */
 
 /* Prints the per-unit summary lines from an already-fetched v1_buf -
- * one line per unit, drive letter = first_letter + unit index (see
- * ch375driver.md "Pn mapovani"). */
+ * one line per unit, drive letter = first_letter + unit index (unit n
+ * = MBR partition n+1). */
 static unsigned int get16(p)
 unsigned char *p;
 {
@@ -158,8 +157,7 @@ unsigned char unit_count;
     }
 }
 
-/* Scans A:..E: for CH375.SYS's IOCTL signature reply (see
- * ch375driver.md "IOCTL odpoved"). On a match, fetches the full v1
+/* Scans A:..E: for CH375.SYS's IOCTL signature reply. On a match, fetches the full v1
  * reply and prints a compact driver-mode summary (<=7 lines on the
  * 40x8 screen), and returns 1 (driver mode handled). Returns 0 if no
  * drive answered - caller falls back to direct hardware mode. */
@@ -232,15 +230,6 @@ unsigned char v;
     con_puts(out_line);
 }
 
-/* TEST_CONNECT (16h) result, printed in direct mode to learn the real
- * codes the driver's MEDIA_CHECK resync relies on (USB_INT_USB_READY
- * = 18h is unverified). */
-static int test_connect()
-{
-    ch375_write_cmd(0x16);
-    return ch375_read_data();
-}
-
 static void direct_hw_mode()
 {
     int status, n, verdict;
@@ -268,7 +257,6 @@ static void direct_hw_mode()
         return;
     }
 
-    print_hex("TC0 ", test_connect());
     con_puts("Wait USB...\r\n");
     status = ch375disk_detect();
     if (status == USB_INT_DISCONNECT) {
@@ -279,7 +267,7 @@ static void direct_hw_mode()
         print_hex("DISK_INIT ", status);
         return;
     }
-    fmt(out_line, "%s %s TC1 %x\r\n", ch375disk_vendor, ch375disk_product, test_connect());
+    fmt(out_line, "%s %s\r\n", ch375disk_vendor, ch375disk_product);
     con_puts(out_line);
 
     status = ch375disk_size();
