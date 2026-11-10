@@ -538,7 +538,18 @@ _strategy:
     mov	_req_seg,es
     retf
 
+/* DIRFIX single-steps DOS with TF set; the driver itself needs no
+ * stepping, so it runs with TF off and the caller's flags come back
+ * on return. */
 _interrupt:
+    pushf
+    push ax
+    pushf
+    pop ax
+    and ah,#0xFE
+    push ax
+    popf
+    pop ax
     push ax
     push bx
     push cx
@@ -584,5 +595,6 @@ _interrupt:
     pop cx
     pop bx
     pop ax
+    popf
     retf
 #endasm

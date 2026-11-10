@@ -6,7 +6,10 @@
 ; it with one call to E52D:3F23 (DX = dir start cluster, BX:AX = byte
 ; offset, CX = length, ES:DI = source).
 ;
-; INT 21h 39h/3Ch/16h/56h run with TF set; the INT 1 handler
+; INT 21h 39h/3Ch/16h/56h first look up the target drive's sectors per
+; cluster (INT 21h AH=1Ch) - only spc > 1 can hit the bug, so a drive
+; with spc <= 1 (or invalid) chains to the old INT 21h untraced. Only
+; for spc > 1 do they run with TF set; the INT 1 handler
 ;   A) at the fill cuts the fill and the saved write length to one sector,
 ;   B) after DOS's write calls E52D:3F23 for the remaining spc-1 sectors.
 ; INT 61h returns with `retf 2`, dropping TF - it is hooked to re-arm TF.
