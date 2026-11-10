@@ -2,13 +2,11 @@
 
 BUILD_DIR := build
 
-# Shared Portfolio library (tinylib etc.). POFOUDSK.COM links
-# tinylib.c, which #includes tinynum.c; POFOUDSK.SYS links only
-# tinyhex.c (no libc, no varargs) - never both in one program.
+# Portfolio library. The COM links tinylib.c (includes tinynum.c), the
+# SYS only tinyhex.c - never both.
 POFOLIB := lib/pofo
 
-# CH375 chip-level library (lib/pofoch375/README.md) - driver-safe,
-# no src/ or DOS dependency, reusable as-is by a future ROM build.
+# CH375 chip library (driver-safe, no dependency on src/).
 POFOCH375 := lib/pofoch375
 
 POFOUDSK_COM_SRC := src/ch375cli.c src/disk.c src/part.c src/partpick.c $(POFOCH375)/ch375det.c $(POFOCH375)/ch375disk.c $(POFOCH375)/ch375core.c $(POFOCH375)/port.c $(POFOLIB)/tinylib.c
@@ -21,14 +19,11 @@ BCC ?= bcc
 AS86 ?= as86
 LD86 ?= ld86
 
-# Bridge (or ESP smart-cable client) HTTP endpoint. Override HOST for a
-# real ESP on the network, e.g.: make upload HOST=10.220.179.55
+# File transfer HTTP endpoint, e.g. make upload HOST=10.220.179.55
 HOST ?= 127.0.0.1
 PORT ?= 9000
-# Empty by default - the bridge's own C:\ default then applies. A
-# trailing backslash in a Makefile variable is line continuation, not
-# a literal character, so don't set one here; override as e.g.
-# make upload DEST_DIR='D:\SOMEDIR\'.
+# Empty = C:\. Set on the command line, e.g. DEST_DIR='D:\DIR\' (a
+# trailing backslash in the Makefile would be a line continuation).
 DEST_DIR ?=
 
 NASM ?= nasm
@@ -42,8 +37,7 @@ sys: $(POFOUDSK_SYS_BIN)
 
 dirfix: $(DIRFIX_BIN)
 
-# Standalone MKDIR/directory-extension fix (see src/dirfix.inc,
-# src/dirfix.asm) - also built into POFOUDSK.SYS, see sysdirfix below.
+# Standalone DIRFIX (also built into POFOUDSK.SYS).
 $(DIRFIX_BIN): src/dirfix.asm src/dirfix.inc | $(BUILD_DIR)
 	$(NASM) -f bin -I src/ -o $@ src/dirfix.asm
 
@@ -53,13 +47,9 @@ $(BUILD_DIR):
 $(POFOUDSK_COM_BIN): $(POFOUDSK_COM_SRC) $(POFOUDSK_COM_HDR) | $(BUILD_DIR)
 	$(BCC) -Md -I$(POFOLIB) -I$(POFOCH375) -Isrc -o $@ $(POFOUDSK_COM_SRC)
 
-# POFOUDSK.SYS - device header must land at file offset 0, so this uses
-# the as86 -u -o (object) + ld86 -0 -d (tiny/impure link) pipeline
-# instead of as86 -b: as86 -b always places .data before .text regardless of source order,
-# which would push the hand-written header away from offset 0; ld86
-# -d keeps .text/.data/.bss in source order instead. Links only the
-# driver-safe units (no libc, no unsigned-long runtime helpers) - never
-# disk.c/ch375det.c/partpick.c, which are CLI only. See src/sys.h.
+# POFOUDSK.SYS: as86 -u + ld86 -0 -d keeps .text/.data/.bss in link order
+# (as86 -b would put .data first and move the device header off offset
+# 0). Driver-safe units only - no libc, no long helpers.
 SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk part port
 SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinyhex.o $(BUILD_DIR)/sysdirfix.o
 SYS_HDR := $(POFOCH375)/ch375.h $(POFOCH375)/ch375disk.h $(POFOCH375)/port.h src/part.h src/pofoudsk.h $(POFOLIB)/tinynum.h src/sys.h src/pofoudsk_version.h
@@ -76,8 +66,7 @@ $(BUILD_DIR)/%.o: $(POFOCH375)/%.c $(SYS_HDR) | $(BUILD_DIR)
 	$(BCC) -0 -Md -I$(POFOLIB) -I$(POFOCH375) -S -o $(BUILD_DIR)/$*_bcc.s $<
 	$(AS86) -0 -u -o $@ $(BUILD_DIR)/$*_bcc.s
 
-# DIRFIX glue (see src/dirfix.inc, src/sysdirfix.asm) - nasm assembles
-# directly to an as86-compatible object, no bcc step.
+# DIRFIX for the SYS: nasm emits an as86 object directly.
 $(BUILD_DIR)/sysdirfix.o: src/sysdirfix.asm src/dirfix.inc | $(BUILD_DIR)
 	$(NASM) -f as86 -I src/ -o $@ $<
 
@@ -86,23 +75,17 @@ $(BUILD_DIR)/sysdirfix.o: src/sysdirfix.asm src/dirfix.inc | $(BUILD_DIR)
 $(POFOUDSK_SYS_BIN): $(SYS_OBJS)
 	$(LD86) -0 -d -o $@ $(SYS_OBJS)
 
-# Assumes the bridge is already running at HOST:PORT and the Portfolio
-# is sitting in File Transfer Server mode. Direct curl multipart POST
-# to the bridge's /upload endpoint. DEST_DIR_ENC substitutes %5C for \
-# (DOS path separator) since it's going into a URL query string, not
-# shell-quoted; already-encoded overrides (e.g. SYS_DEST_DIR_ENC) must
-# use %5C directly for the same reason.
+# Upload needs the Portfolio in File Transfer Server mode. Paths go into
+# a URL query, so \ is sent as %5C.
 DEST_DIR_ENC = $(subst \,%5C,$(DEST_DIR))
 
 UPLOAD_BASE = http://$(HOST):$(PORT)/uploadFile?toAtari=1&overwrite=1
 UPLOAD_URL = $(UPLOAD_BASE)$(if $(DEST_DIR),&destDir=$(DEST_DIR_ENC))
 
-# POFOUDSK.SYS goes to the A: memory card by default (C: is too small
-# for both files) - CONFIG.SYS then needs DEVICE=A:\POFOUDSK.SYS.
+# The SYS goes to A: (CONFIG.SYS: DEVICE=A:\POFOUDSK.SYS).
 SYS_DEST_DIR_ENC ?= A:%5C
 
-# upload = both files (POFOUDSK.SYS/.COM must match - shared IOCTL
-# reply layout), upload-com / upload-sys = just one.
+# SYS and COM share the IOCTL layout - upload both together.
 upload: upload-sys upload-com
 
 upload-com: $(POFOUDSK_COM_BIN)

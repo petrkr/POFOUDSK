@@ -1,11 +1,5 @@
-/* 8086 I/O port access for BCC (K&R C)
- *
- * BCC has no built-in inp()/outp() - implemented here with the #asm
- * keyword instead. A function whose body is only an #asm block gets
- * no bp-frame prologue from BCC, so bp here is still the caller's -
- * push/set up our own frame first, then the usual 4[bp]/6[bp] arg
- * offsets apply.
- */
+/* Port I/O for BCC (no inp/outp). An #asm-only body gets no BCC
+ * prologue, so each function sets up its own bp frame. */
 
 port_out(port, val)
 unsigned port;

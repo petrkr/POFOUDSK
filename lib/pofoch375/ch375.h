@@ -1,6 +1,4 @@
-/* CH375 low-level driver library for BCC (K&R C).
- * CH375 mapped at I/O 807Dh (command port) / 807Eh (data port).
- */
+/* CH375 commands and status codes. Ports: 807Dh command, 807Eh data. */
 
 /* SET_USB_MODE mode codes, datasheet section 5.9 */
 #define MODE_DEVICE_INVALID  0x00 /* default after power-up/reset */
@@ -23,15 +21,11 @@
 #define USB_INT_DISK_WRITE  0x1E
 #define USB_INT_DISK_ERR    0x1F
 
-/* TEST_CONNECT (5.10) "device connected and initialized" result code -
- * not in this project's copy of the datasheet. WCH's own CH375 headers
- * commonly use 0x18 - confirmed on the chip (TEST_CONNECT after
- * DISK_INIT returned 18h). */
+/* TEST_CONNECT "connected and initialized" - missing from the datasheet,
+ * 18h confirmed on the chip. */
 #define USB_INT_USB_READY   0x18
 
-/* Not a chip code: returned by ch375disk.c when ch375_wait_int()
- * timed out, so a dead/unresponsive chip is distinguishable from a
- * real USB_INT_DISK_ERR reported by the chip. */
+/* not a chip code: ch375_wait_int() timed out */
 #define CH375_TIMEOUT       0xFF
 
 extern ch375_write_cmd();

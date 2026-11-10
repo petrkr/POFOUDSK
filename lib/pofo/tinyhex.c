@@ -1,6 +1,4 @@
-/* put_hex2() - see tinynum.c. Separate unit so a driver/ROM build that
-   needs only hex output does not link put_udec() (ld86 links whole
-   objects). */
+/* put_hex2() - own unit, ld86 links whole objects. */
 
 #include "tinynum.h"
 

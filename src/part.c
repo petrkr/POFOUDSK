@@ -1,26 +1,12 @@
-/* part.c - driver-safe MBR partition table / boot sector BPB parsing
- * and FAT12 suitability check, built on lib/pofoch375's
- * ch375disk_read_sector(). Not chip-specific (pure parsing of bytes
- * already streamed in) - see part.h for the module overview. Same
- * rules as lib/pofoch375/ch375disk.c: no printf, no unsigned-long
- * helpers, no 512-byte sector buffer - only the few bytes actually
- * needed are captured out of the 64-byte chunks as they stream past.
- * Linked into both POFOUDSK.SYS and POFOUDSK.COM.
- */
+/* MBR / boot sector BPB parsing and FAT12 check. Only the needed bytes
+ * are captured from the 64-byte chunks as they stream in. */
 
 #include "ch375.h"
 #include "ch375disk.h"
 #include "part.h"
 
-/* Capture windows, filled by cap_chunk_handler() on every
- * ch375disk_read_mbr()/ch375disk_read_bpb() read:
- *   - byte 0 (boot/jump byte, superfloppy check),
- *   - BPB bytes 0x0B..0x17 (13 bytes, DOS 2.x BPB wire layout -
- *     exported as ch375disk_bpb_raw so the driver can hand it to DOS
- *     verbatim, no pack/unpack),
- *   - MBR partition table + signature, bytes 446 (0x1BE)..511.
- * One handler for both reads - on a BPB read the MBR window just gets
- * overwritten with that sector's bytes, which nothing reads. */
+/* Captured on every MBR/BPB read: byte 0, BPB bytes 0x0B..0x17
+ * (exported as ch375disk_bpb_raw) and MBR bytes 0x1BE..0x1FF. */
 #define MBR_CAP_START 446
 #define MBR_CAP_LEN   66
 static unsigned char mbr_cap[MBR_CAP_LEN];
@@ -29,7 +15,6 @@ static unsigned char cap_byte0;
 #define BPB_CAP_START 0x0B
 unsigned char ch375disk_bpb_raw[CH375DISK_BPB_RAW_LEN];
 
-/* Little-endian 16-bit value at r. */
 static unsigned int get16(r)
 unsigned char *r;
 {
@@ -86,10 +71,8 @@ struct ch375disk_mbr *mbr;
     mbr->has_mbr_sig = (mbr_cap[64] == 0x55 && mbr_cap[65] == 0xAA);
     parse_bpb(&mbr->bpb0);
 
-    /* Superfloppy (sector 0 IS the FAT boot sector): jump opcode
-     * 0xEB/0xE9 plus a sane BPB whose size fits the disk (needs
-     * ch375disk_size() called first). MBR code typically starts with
-     * something else (e.g. 0x33, 0xFA) and has no BPB. */
+    /* Superfloppy: jump opcode at byte 0 + a sane BPB that fits the disk
+     * (needs ch375disk_size() first). */
     mbr->is_superfloppy = (cap_byte0 == 0xEB || cap_byte0 == 0xE9)
         && ch375disk_bpb_sane(&mbr->bpb0)
         && mbr->bpb0.total_sectors != 0
@@ -101,7 +84,7 @@ struct ch375disk_mbr *mbr;
     for (n = 0; n < CH375DISK_PART_COUNT; n++) {
         p->boot_flag = entry[0];
         p->type = entry[4];
-        /* bytes 8..15 = start + size, see struct ch375disk_part */
+        /* bytes 8..15 = start + size */
         dst = (unsigned char *) &p->lba_start_lo;
         for (i = 8; i < 16; i++)
             *dst++ = entry[i];
@@ -129,8 +112,7 @@ unsigned char *boot_jump;
     return status;
 }
 
-/* 1 if sectors_per_cluster is a non-zero power of 2 - v & (v - 1)
- * clears the lowest set bit, so it is 0 only for a single set bit. */
+/* sectors/cluster must be a power of two */
 ch375disk_bpb_sane(bpb)
 struct ch375disk_bpb *bpb;
 {
@@ -146,12 +128,8 @@ struct ch375disk_bpb *bpb;
     return 1;
 }
 
-/* FAT12 suitability: MBR type 0x01, or a superfloppy (part_type == 0,
- * caller's own convention for "no MBR partition entry to check"), and
- * the BPB must pass ch375disk_bpb_sane(), and the partition/disk
- * sector count must fit DOS 2.x's 16-bit BPB total-sectors field
- * (<= 65535 sectors, i.e. <= 32MB at 512 bytes/sector) - sectors_hi
- * must be 0 since unsigned int is itself only 16 bits here. */
+/* MBR type 01h (or 0 = superfloppy), sane BPB, and at most 65535
+ * sectors - DOS 2.x has a 16-bit total-sectors field. */
 ch375disk_fat12_check(part_type, sectors_hi, sectors_lo, bpb)
 unsigned char part_type;
 unsigned int sectors_hi;

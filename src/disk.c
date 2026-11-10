@@ -1,9 +1,4 @@
-/* Presentation helpers for the lib/pofoch375 ch375disk.c / src/part.c
- * disk-level layer. CLI-only (POFOUDSK.COM) - prints through lib/pofo
- * tinylib (fmt() + con_puts()), never linked into POFOUDSK.SYS. Takes
- * the hi/lo structures the disk layer produces and prints them in
- * human-readable form; no CH375 protocol logic of its own.
- */
+/* CLI-only formatting of the disk layer's hi/lo values. */
 
 #include "ch375disk.h"
 #include "part.h"
@@ -11,12 +6,10 @@
 #include "tinylib.h"
 #include "tinynum.h"
 
-/* Line buffer shared by all CLI output - longest line is the
- * BPB dump (3 lines). */
+/* shared output line buffer */
 char out_line[64];
 
-/* Unsigned 32-bit decimal of hi:lo, by repeated subtraction of each
- * power of ten (hi/lo pairs, manual borrow) - no long helpers. */
+/* 32-bit decimal of hi:lo by repeated subtraction - no long helpers. */
 char *put_udec32(out, hi, lo)
 char *out;
 unsigned int hi;
@@ -50,8 +43,7 @@ unsigned int lo;
     return out;
 }
 
-/* "<n>MB" for a 512-byte-sector count hi:lo - sectors / 2048 as a
- * 32-bit right shift by 11 across the pair. No terminator. */
+/* "<n>MB" for a 512-byte sector count (count >> 11). No terminator. */
 char *put_mb(out, hi, lo)
 char *out;
 unsigned int hi;

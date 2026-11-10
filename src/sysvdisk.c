@@ -1,27 +1,14 @@
-/* POFOUDSK.SYS virtual status disk - whenever a unit has no usable real
- * partition mounted, the driver presents this tiny synthetic, empty,
- * read-only FAT12 disk instead of refusing I/O: its volume label
- * tells why (controller/USB/partition state). Details are available
- * through IOCTL (POFOUDSK.COM).
- *
- * Sectors are generated on the fly straight into the far DOS transfer
- * buffer: far_fill() zeroes the sector, then the few non-zero bytes
- * are copied in from small resident templates via far_copy() - no
- * 512-byte image or sector buffer kept resident.
- */
+/* Virtual status disk: an empty read-only FAT12 disk for units without
+ * a usable partition; the volume label tells why. Sectors are generated
+ * straight into the DOS buffer. */
 
 #include "pofoudsk.h"
 #include "tinynum.h"
 #include "sys.h"
 
-/* Virtual disk BPB - real geometry of a disk that actually exists
- * (the synthetic status disk), not a placeholder. DOS 2.x builds its
- * DPB from this immediately at INIT and divides by bytes/sector and
- * sectors/cluster, so neither may ever be zero.
- * Doubles as the boot sector's BPB (sector 0, offset 0x0B). A unit
- * whose mounted partition is CH375DISK_UNIT_REAL gets its own real BPB
- * (unit_bpb[]) via BUILD_BPB instead - whose sector size must never
- * exceed this BPB's 512 (enforced by ch375disk_bpb_sane()). */
+/* BPB of the virtual disk, also handed to DOS at INIT - bytes/sector
+ * and sectors/cluster must never be 0 (DOS 2.x divides by them). Real
+ * partitions must not exceed its 512-byte sector. */
 unsigned char bpb[] = {
     0x00, 0x02, /* bytes per sector = 512 */
     0x01,       /* sectors per cluster = 1 */
@@ -33,11 +20,10 @@ unsigned char bpb[] = {
     0x01, 0x00  /* sectors per FAT = 1 */
 };
 
-/* FAT copy head: media byte, no cluster in use. */
+/* media byte, no cluster in use */
 static unsigned char fat_head[] = { 0xF8, 0xFF, 0xFF };
 
-/* Root directory: just the volume label, set per request from the
- * unit state (see set_label()). */
+/* root directory: volume label only */
 #define ROOT_LEN 32
 static unsigned char root_dir[ROOT_LEN] = {
     ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
@@ -53,9 +39,7 @@ char *s;
     return p;
 }
 
-/* Volume label (11 chars, space padded) describing why cur_unit has no
- * usable partition: NO CH375, NO USB, Pn EMPTY, Pn GPT, Pn TOO BIG,
- * Pn BAD BPB or Pn TYPE xx. */
+/* NO CH375, NO USB, Pn EMPTY, Pn GPT, Pn TOO BIG, Pn BAD BPB, Pn TYPE xx */
 static void set_label()
 {
     struct unit_state *u;
@@ -91,9 +75,7 @@ static void set_label()
         put_hex2(put_str(p, "TYPE "), u->part_type);
 }
 
-/* Generates one 512-byte virtual disk sector into seg:off. Sector
- * map: 0 boot sector, 1-2 FAT copies, 3 root dir (label only), 4-7
- * zero. */
+/* Sector map: 0 boot, 1-2 FAT, 3 root dir, 4-7 zero. */
 void generate_sector(seg, off, sector)
 unsigned int seg;
 unsigned int off;

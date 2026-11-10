@@ -1,11 +1,4 @@
-/* CH375 low-level primitives safe to link into the device driver
- * (POFOUDSK.SYS) as well as the CLI - no stdio, no unsigned-long BCC
- * runtime helpers. ch375disk.c builds the driver-safe disk-level
- * layer (DISK_SIZE, streaming sector read, MBR/BPB parsing) on top of
- * these; disk.c then adds CLI-only printf/unsigned-long presentation
- * on top of that. CH375 mapped at I/O 807Dh (command port) / 807Eh
- * (data port).
- */
+/* CH375 primitives (no libc, no long). */
 
 #include "port.h"
 #include "ch375.h"
@@ -19,9 +12,7 @@
 #define CMD_GET_STATUS   0x22
 #define CMD_RD_USB_DATA  0x28
 
-/* Bounded wait_int() loop count - untuned, picked as "clearly more
- * than any observed real CH375 response latency" without measurement
- * on hardware. */
+/* Bounded wait_int() loop - untuned, not measured on HW. */
 #define WAIT_INT_MAX_ITER 60000U
 
 ch375_write_cmd(cmd)
@@ -41,10 +32,7 @@ ch375_read_data()
     return port_in(CH375_DAT);
 }
 
-/* Reads the command port without issuing any command first. Per the
- * datasheet (6.2.1), this returns the "interrupt token" byte where
- * bit 7 mirrors the INT# pin - bits 0-6 are undocumented.
- */
+/* Command port read without a command: bit 7 = INT# (datasheet 6.2.1). */
 ch375_read_cmd_token()
 {
     return port_in(CH375_CMD);
@@ -70,18 +58,9 @@ ch375_get_status()
     return ch375_read_data();
 }
 
-/* Poll the command port until bit 7 goes low (INT# active), bounded
- * by WAIT_INT_MAX_ITER iterations. For use only in front of commands
- * the datasheet marks as "Produce interruption" (DISK_INIT,
- * DISK_SIZE, ...) - the command itself runs asynchronously and
- * GET_STATUS must not be issued before it actually completes, or it
- * just echoes a stale/unrelated status.
- *
- * Returns 1 if the interrupt was seen, 0 on timeout - a timeout means
- * the chip stopped responding and the caller (driver guard state
- * machine) must treat this as a lost controller (CH375 lost its state
- * while the PID card stayed present).
- */
+/* Waits for INT# after a command marked "Produce interruption" -
+ * GET_STATUS before completion returns a stale status. Returns 0 on
+ * timeout (chip stopped responding). */
 ch375_wait_int()
 {
     unsigned int i;
@@ -101,9 +80,8 @@ unsigned char mode;
     return ch375_read_data();
 }
 
-/* Busy-wait roughly ms milliseconds. UNTUNED: DELAY_LOOPS_PER_MS is a
- * guess for the 4.9 MHz 80C88, erring on the long side - measure on
- * HW before relying on exact timing. */
+/* Busy wait, ~ms milliseconds. DELAY_LOOPS_PER_MS is a guess for the
+ * 4.9 MHz 80C88, not measured. */
 #define DELAY_LOOPS_PER_MS 200U
 
 ch375_delay_ms(ms)
@@ -118,13 +96,10 @@ unsigned int ms;
     }
 }
 
-/* Delay between bus reset (mode 07h) and enable (mode 06h) - the
- * reset must actually last on the bus. Needed on HW; 50 ms is an
- * unverified guess, not measured. */
+/* Bus reset duration (mode 07h -> 06h); 50 ms is a guess. */
 #define HOST_RESET_MS 50
 
-/* Datasheet 5.9: "enter mode 7 first and then switch to mode 6".
- * Returns 1 if both mode switches reported CMD_RET_SUCCESS. */
+/* Datasheet 5.9: mode 7, then mode 6. Returns 1 on success. */
 ch375_host_reset()
 {
     if (ch375_set_usb_mode(MODE_HOST_RESET) != CMD_RET_SUCCESS)
@@ -135,13 +110,7 @@ ch375_host_reset()
     return 1;
 }
 
-/* RD_USB_DATA (datasheet 5.13): reads whatever data block is queued
- * in the chip's current interrupt endpoint buffer. First byte read is
- * the block length (0-64), followed by exactly that many data bytes -
- * stores them into buf and returns the length. Non-printing - used
- * directly by ch375disk.c's driver-safe layer (DISK_SIZE, streaming
- * sector read); the driver can't link printf at all.
- */
+/* RD_USB_DATA (5.13): length byte + data into buf; returns length. */
 ch375_rd_usb_data_q(buf)
 unsigned char *buf;
 {

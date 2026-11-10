@@ -1,10 +1,5 @@
-/* partpick.c - CLI-only "first usable MBR volume" selection
- * (ch375disk_pick_volume()). MBR logic, not chip logic, so it lives
- * next to part.c/part.h rather than lib/pofoch375 - but ld86 links
- * whole objects, and POFOUDSK.SYS evaluates every partition per unit
- * instead of picking just one (see src/sysmount.c), so this stays a
- * separate translation unit linked only into POFOUDSK.COM.
- */
+/* CLI-only volume pick - kept out of part.c so the driver does not
+ * link it. */
 
 #include "part.h"
 
@@ -34,8 +29,7 @@ unsigned int *sectors_lo;
     if (!mbr->has_mbr_sig)
         return CH375DISK_NO_VOLUME;
 
-    /* First FAT12 entry wins; otherwise the first valid entry, so the
-     * caller can still report why it's unusable. */
+    /* first FAT12 entry, else the first valid one */
     found = -1;
     for (n = 0; n < CH375DISK_PART_COUNT; n++) {
         if (!part_valid(&mbr->part[n]))

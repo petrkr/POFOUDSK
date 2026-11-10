@@ -1,30 +1,19 @@
-/* POFOUDSK.SYS internal interface, shared by its units:
- *   - ch375sys.c: device header, strategy/interrupt trampolines, own
- *     stack, request dispatch and the DOS command handlers,
- *   - sysfar.c:   asm helpers (far memory peek/poke/copy/fill, far
- *     buffer -> data port, DOS $-string print, PID check),
- *   - sysmount.c: controller/USB state machine (guard), mount/unmount
- *     and per-unit state,
- *   - sysvdisk.c: virtual status disk (sector generator, volume label).
- * ch375sys.c must stay first on the ld86 command line - its #asm
- * device header has to land at file offset 0.
- */
+/* POFOUDSK.SYS internal interface. */
 
 #define MAX_UNITS     4
 
-/* guard() state machine, see sysmount.c guard(). */
 #define STATE_NO_CONTROLLER 0
 #define STATE_CONTROLLER_OK 1
 
 struct unit_state {
-    unsigned char status;   /* CH375DISK_UNIT_* (pofoudsk.h) */
-    unsigned char reason;   /* CH375DISK_UNIT_REASON_* - valid only if status == UNSUPPORTED */
-    unsigned char part_type; /* MBR partition type byte, 0 for superfloppy/none */
+    unsigned char status;   /* CH375DISK_UNIT_* */
+    unsigned char reason;   /* CH375DISK_UNIT_REASON_*, UNSUPPORTED only */
+    unsigned char part_type; /* MBR type, 0 = superfloppy/none */
     unsigned int start_hi;
     unsigned int start_lo;
     unsigned int size_hi;
     unsigned int size_lo;
-    unsigned char mount_gen; /* snapshot of mount_gen at the time this unit's state was set */
+    unsigned char mount_gen;
 };
 
 /* --- ch375sys.c --- */

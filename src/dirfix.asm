@@ -1,8 +1,4 @@
-; DIRFIX.COM - standalone resident installer for the DIRFIX MKDIR/
-; directory-extension cluster bug fix. See dirfix.inc for the bug and
-; the fix itself.
-;
-; Build: nasm -f bin -I src/ -o DIRFIX.COM dirfix.asm
+; DIRFIX.COM - standalone resident DIRFIX.
 
         org     100h
 

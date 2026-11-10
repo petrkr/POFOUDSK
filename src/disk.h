@@ -1,6 +1,4 @@
-/* Presentation helpers built on top of the driver-safe disk layer -
- * CLI-only, see disk.c.
- */
+/* CLI-only formatting helpers. */
 
 extern char out_line[];
 extern char *put_udec32();

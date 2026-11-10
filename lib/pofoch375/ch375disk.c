@@ -1,11 +1,5 @@
-/* ch375disk.c - driver-safe disk I/O layer, see ch375disk.h for the
- * module overview: DISK_INIT (+ INQUIRY drain), DISK_SIZE, REQUEST
- * SENSE and streaming single-sector READ/WRITE. Builds on top of
- * ch375core.c's primitives - never printf, never BCC's unsigned-long
- * runtime helpers, never a 512-byte sector buffer, so this file stays
- * linkable into POFOUDSK.SYS as well as POFOUDSK.COM. MBR/BPB parsing lives
- * in ch375part.c, CLI-only blocking detect in ch375det.c.
- */
+/* CH375 disk commands: DISK_INIT, DISK_SIZE, REQUEST SENSE, single-sector
+ * READ/WRITE streamed in 64-byte chunks (no sector buffer). */
 
 #include "port.h"
 #include "ch375.h"
@@ -20,33 +14,26 @@
 #define CMD_WR_USB_DATA7 0x2B
 #define CMD_DISK_R_SENSE 0x5A
 
-/* DISK_SIZE attempts and pause between them - see ch375disk_size(). */
 #define DISK_SIZE_TRIES    5
 #define DISK_SIZE_RETRY_MS 100
 
-/* Vendor/product strings from the SCSI INQUIRY reply DISK_INIT
- * leaves queued (see ch375disk_init()), NUL-terminated, trailing
- * spaces kept. Empty if no INQUIRY block was seen. */
+/* vendor/product from INQUIRY, empty if none was seen */
 char ch375disk_vendor[9];
 char ch375disk_product[17];
 
 /* Upper bound on RD_USB_DATA blocks drained after DISK_INIT. */
 #define DRAIN_MAX_BLOCKS 32
 
-/* Observed on HW: DISK_INIT/DISK_SIZE may report success as
- * CMD_RET_SUCCESS (51h) instead of USB_INT_SUCCESS (14h). Normalize
- * so callers only check USB_INT_SUCCESS. */
+/* DISK_INIT/DISK_SIZE may report success as CMD_RET_SUCCESS (51h)
+ * (observed on HW). */
 static int norm_status(s)
 int s;
 {
     return (s == CMD_RET_SUCCESS) ? USB_INT_SUCCESS : s;
 }
 
-/* Observed on HW: DISK_INIT internally runs a SCSI INQUIRY and leaves
- * its 36-byte reply queued in the chip's read buffer. Unless drained, RD_USB_DATA after the next command (e.g.
- * DISK_SIZE) returns these stale bytes instead of its own data. Drain
- * until an empty block, keeping vendor (bytes 8-15) and product
- * (16-31) from the first block that holds them. */
+/* DISK_INIT leaves its INQUIRY reply queued - unless drained, the next
+ * RD_USB_DATA returns it (observed on HW). Keeps vendor/product. */
 static void drain_inquiry()
 {
     unsigned char buf[64];
@@ -77,7 +64,7 @@ unsigned int ch375disk_sector_count_lo;
 unsigned int ch375disk_sector_size_hi;
 unsigned int ch375disk_sector_size_lo;
 
-/* DISK_INIT (datasheet 5.15). */
+/* DISK_INIT, datasheet 5.15 */
 ch375disk_init()
 {
     int status;
@@ -91,17 +78,8 @@ ch375disk_init()
     return status;
 }
 
-/* DISK_SIZE (datasheet 5.16) - result kept as hi/lo unsigned int pairs
- * (ch375disk_sector_count_hi/lo, ch375disk_sector_size_hi/lo) instead
- * of `unsigned long`, so this stays safe to link into the driver.
- * Both chip fields are big-endian 4-byte values; the raw sector count
- * field is the last valid LBA, so it is incremented by one here (with
- * hi/lo carry) to get the actual sector count. */
-/* DISK_R_SENSE (5Ah): SCSI REQUEST SENSE - clears a pending check
- * condition (e.g. Unit Attention after reset) so the next command can
- * succeed. Its sense data, if queued, is drained and discarded.
- * Exported (not static) so the driver can call it between a failed
- * READ/WRITE and its one retry. */
+/* DISK_R_SENSE (5Ah): clears a pending check condition, discards the
+ * sense data. */
 ch375disk_request_sense()
 {
     unsigned char buf[64];
@@ -117,16 +95,13 @@ ch375disk_request_sense()
     return status;
 }
 
-/* Number of DISK_SIZE attempts the last ch375disk_size() call needed
- * (diagnostics only). */
 int ch375disk_size_tries;
 
 static int disk_size_once();
 
-/* Observed on HW (Alcor 058f:6387): the first DISK_SIZE after
- * DISK_INIT fails with USB_INT_DISK_ERR - consistent with a SCSI Unit
- * Attention pending after reset (not confirmed). Retry with a REQUEST
- * SENSE in between. */
+/* DISK_SIZE (5.16). The first one after DISK_INIT fails on some disks
+ * (Alcor 058f:6387), retried after REQUEST SENSE. Big-endian last LBA +
+ * sector size -> hi/lo sector count. */
 ch375disk_size()
 {
     int status;
@@ -170,11 +145,7 @@ static int disk_size_once()
     return status;
 }
 
-/* DISK_READ (datasheet 5.22) + DISK_RD_GO (5.18), streaming variant:
- * LBA is an hi/lo unsigned int pair (not `unsigned long`), and instead
- * of filling a 512-byte buffer, each 64-byte chunk is handed to the
- * caller-supplied handler as it arrives: handler(offset, chunk, len).
- * No buffer larger than 64 bytes is ever kept here. */
+/* DISK_READ (5.22) + DISK_RD_GO (5.18), chunk by chunk to handler. */
 ch375disk_read_sector(lba_hi, lba_lo, handler)
 unsigned int lba_hi;
 unsigned int lba_lo;
@@ -210,12 +181,8 @@ int (*handler)();
     }
 }
 
-/* DISK_WRITE (datasheet 5.19) + DISK_WR_GO (5.20), streaming variant -
- * mirrors ch375disk_read_sector() in the opposite direction. On each
- * USB_INT_DISK_WRITE, WR_USB_DATA7 (5.14) is issued and the
- * caller-supplied supplier(offset, 64) must write the length byte (64)
- * followed by 64 data bytes to the data port (ch375_write_data() then
- * the far-memory port loop) - no buffer kept here either. */
+/* DISK_WRITE (5.19) + WR_USB_DATA7 (5.14) + DISK_WR_GO (5.20), chunk
+ * by chunk from supplier. */
 ch375disk_write_sector(lba_hi, lba_lo, supplier)
 unsigned int lba_hi;
 unsigned int lba_lo;

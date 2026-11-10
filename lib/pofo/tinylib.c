@@ -115,8 +115,7 @@ char *text;
     con_write(text, str_len(text));
 }
 
-/* put_hex2()/put_udec() - division-free, shared with driver/ROM builds
-   that link tinynum.c on its own (see there). */
+/* put_hex2()/put_udec() */
 #include "tinynum.c"
 
 char *fmt(out, format)

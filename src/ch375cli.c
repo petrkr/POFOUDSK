@@ -1,24 +1,7 @@
-/* POFOUDSK.COM - CLI client for the CH375 USB host controller.
- *
- * Two modes, picked automatically, no command-line switches:
- *
- *   - POFOUDSK.SYS loaded: scan A:..E: via INT 21h/44h/04h ("read control
- *     data") for the driver's "POFOUDSK" signature. If found, use
- *     IOCTL only (driver version + ctrl_state) and never touch the
- *     CH375 ports directly - that would desync the driver's own guard
- *     state machine.
- *   - No driver: direct hardware mode. PID check (INT 61h/AH=1Ah,
- *     ID 0x75, same check the driver itself does) before any port
- *     access, then CHECK_EXIST, IC version, USB host mode (reset +
- *     SOF), bounded wait for USB connect, DISK_INIT, DISK_SIZE, MBR
- *     partition table, and the BPB + FAT12 verdict for the chosen
- *     partition.
- *
- * Output is kept to short lines - the Portfolio screen is 40x8;
- * redirect to a file with `>` for the full dump. No printf - lines
- * are built with lib/pofo tinylib's fmt() into out_line (disk.c) and
- * written with con_puts().
- */
+/* POFOUDSK.COM - status tool. With POFOUDSK.SYS loaded it only talks to
+ * the driver via IOCTL (direct port access would desync the driver);
+ * otherwise it probes the CH375 directly: PID check, chip, USB disk,
+ * capacity, MBR, BPB and FAT12 verdict. Lines fit the 40x8 screen. */
 
 #include "ch375.h"
 #include "ch375disk.h"
@@ -30,16 +13,11 @@
 
 #define IOCTL_SIG_LEN POFOUDSK_IOCTL_V0_LEN
 
-/* Set by call_ioctl() as a side effect (its body is #asm only, so it
- * can't just return two values) - carry flag after INT 21h: 1 = CF
- * set (DOS rejected/doesn't support the call), 0 = CF clear. */
+/* CF after the last INT 21h/44h */
 static unsigned char dos_carry;
 
-/* AH=44h dispatcher - al picks the IOCTL subfunction, bl the drive
- * number (1=A:), cx a count, dx the offset of a local buffer (same
- * data segment as this .COM program, so a near pointer is enough).
- * Returns AX as seen right after INT 21h; dos_carry is set from the
- * carry flag. */
+/* INT 21h/44h: al = subfunction, bl = drive (1 = A:), cx = count,
+ * dx = buffer. Returns AX, sets dos_carry. */
 static unsigned int call_ioctl(al, bl, cx, dx)
 unsigned char al;
 unsigned char bl;
@@ -71,10 +49,8 @@ ioctl_cf_done:
 #endasm
 }
 
-/* PID presence check (Atari Portfolio BIOS, INT 61h/AH=1Ah), same
- * check POFOUDSK.SYS's own guard() runs: AL=0 -> no PID card, AL!=0 ->
- * present, AH = PID id byte. Returns 1 only for PID_ID_CH375. Must be
- * called (and succeed) before any direct 807D/807E port access. */
+/* INT 61h/1Ah: 1 if the CH375 PID card is present - required before
+ * any port access. */
 #define PID_ID_CH375 0x75
 
 static unsigned char pid_check()
@@ -96,10 +72,8 @@ cli_pid_done:
 
 static char ioctl_buf[IOCTL_SIG_LEN];
 
-/* IOCTL v1 reply layout (see src/ch375sys.c cmd_ioctl_in()): v0's 13-byte signature/version/state
- * block, then usb_state(1)/mount_gen(1)/unit_count(1), vendor[8],
- * product[16], capacity sectors hi/lo (2+2), then MAX_UNITS=4 * 10
- * bytes (type, unit status, start hi/lo, size hi/lo). */
+/* IOCTL v1 reply: v0 block (13), usb_state, mount_gen, unit_count,
+ * vendor[8], product[16], capacity hi/lo, 4 x 10 bytes per unit. */
 #define IOCTL_V1_LEN (IOCTL_SIG_LEN + 3 + 8 + 16 + 4 + 4 * 10)
 static unsigned char v1_buf[IOCTL_V1_LEN];
 
@@ -109,9 +83,7 @@ unsigned char *p;
     return (unsigned int) p[0] | ((unsigned int) p[1] << 8);
 }
 
-/* "Drv X: vM.m.p stSS" - driver identification from the v0 part of
- * an IOCTL reply, into out_line; returns the terminator position so
- * the caller can append. */
+/* "Drv X: vM.m.p stSS" into out_line; returns the end for appending. */
 static char *put_drv(first_letter, r)
 char first_letter;
 unsigned char *r;
@@ -123,9 +95,7 @@ unsigned char *r;
     return fmt(p, ": v%u.%u.%u st%x", r[8], r[9], r[10], r[11]);
 }
 
-/* Prints the per-unit summary lines from an already-fetched v1_buf -
- * one line per unit, drive letter = first_letter + unit index (unit n
- * = MBR partition n+1). */
+/* One line per unit: drive letter, partition, type, size/verdict. */
 static void print_units(first_letter, unit_count)
 char first_letter;
 unsigned char unit_count;
@@ -155,10 +125,8 @@ unsigned char unit_count;
     }
 }
 
-/* Scans A:..E: for POFOUDSK.SYS's IOCTL signature reply. On a match, fetches the full v1
- * reply and prints a compact driver-mode summary (<=7 lines on the
- * 40x8 screen), and returns 1 (driver mode handled). Returns 0 if no
- * drive answered - caller falls back to direct hardware mode. */
+/* Finds the driver on A:..E: by its IOCTL signature and prints its
+ * state. Returns 0 if not found. */
 static unsigned char try_driver_mode()
 {
     unsigned char drive, i;
@@ -186,8 +154,7 @@ static unsigned char try_driver_mode()
             v1_buf[i] = 0;
         ax = call_ioctl(0x04, drive, IOCTL_V1_LEN, (unsigned int) v1_buf);
         if (dos_carry) {
-            /* Driver too old for v1 (or the call failed outright) -
-             * fall back to the v0-only line. */
+            /* driver without v1 reply: v0 line only */
             fmt(put_drv(first_letter, ioctl_buf), "\r\n");
             con_puts(out_line);
             return 1;
@@ -219,7 +186,6 @@ static unsigned char try_driver_mode()
     return 0;
 }
 
-/* "<s><hex byte>" status line. */
 static void print_hex(s, v)
 char *s;
 unsigned char v;

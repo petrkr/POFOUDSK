@@ -1,38 +1,16 @@
-; DIRFIX core - resident fix for the Atari Portfolio DIP DOS directory
-; cluster bug on drives with more than one sector per cluster.
+; DIRFIX - fix for the DIP DOS directory cluster bug (spc > 1).
 ;
-; The bug: whenever DOS
-; adds a cluster to a directory - MKDIR (new directory) or a file /
-; directory created in a full subdirectory (directory extension) - ROM
-; routine E52D:189D zeroes a whole cluster (spc * bytes/sector) with
-; `rep stosb` into a fixed 512-byte DOS work area at SS:0CC2
-; (E52D:18C0), overrunning DOS data (DPBs, buffer headers, file table,
-; ...) when spc > 1, then writes it with one call to E52D:3F23
-; (DX = directory start cluster, BX:AX = byte offset, CX = length,
-; ES:DI = source).
+; When DOS adds a cluster to a directory (MKDIR, or a new entry in a full
+; subdirectory), ROM E52D:18C0 zeroes a whole cluster with `rep stosb`
+; into the 512-byte work area SS:0CC2 and overruns DOS data, then writes
+; it with one call to E52D:3F23 (DX = dir start cluster, BX:AX = byte
+; offset, CX = length, ES:DI = source).
 ;
-; Fix: the INT 21h calls that can add a directory cluster run with the
-; trap flag set. The INT 1 handler:
-;   A) at the `rep stosb` cuts the fill - and the length DOS saved for
-;      the following write - down to one sector, so DOS zeroes 512
-;      bytes and writes (and, for an extension, allocates) only the
-;      first sector of the new cluster;
-;   B) right after that write calls the same DOS write routine for the
-;      remaining spc-1 sectors (offset + n * bytes/sector) from the
-;      same zeroed work area, exactly as if DOS wrote sector by sector.
-; Only DPB fields +2 (bytes/sector) and +4 (cluster mask) are used,
-; both as the ROM itself uses them.
-;
-; INT 61h (Portfolio BIOS) returns with `retf 2`, which drops TF for
-; its caller - the CH375 driver calls it on every request, DOS may too.
-; INT 61h is therefore hooked as well and re-arms TF on its way back.
-;
-; ROM-version specific: df_check verifies the expected code is present
-; before df_hook installs the handlers.
-;
-; Everything here is CS-relative (cs: overrides, no DS assumptions) -
-; this file is included unchanged into both the standalone DIRFIX.COM
-; (src/dirfix.asm) and the POFOUDSK.SYS driver glue (src/sysdirfix.asm).
+; INT 21h 39h/3Ch/16h/56h run with TF set; the INT 1 handler
+;   A) at the fill cuts the fill and the saved write length to one sector,
+;   B) after DOS's write calls E52D:3F23 for the remaining spc-1 sectors.
+; INT 61h returns with `retf 2`, dropping TF - it is hooked to re-arm TF.
+; df_check verifies the ROM code first. All data is CS-relative.
 
 DF_ROM_SEG      equ     0E52Dh          ; CS of the DOS routines below
 DF_FILL_IP      equ     18C0h           ; rep stosb (cluster zero fill)
@@ -196,9 +174,7 @@ df_resident_end:
 
 ; ---------------------------------------------------------------- install
 
-; Expected ROM bytes at FILL_IP - 8: mov di,0CC2h / push ax / push cx /
-; push di / xor al,al / rep stosb / pop di / pop cx / pop ax /
-; call WRITE_IP
+; ROM bytes at FILL_IP - 8 (mov di,0CC2h .. rep stosb .. call WRITE_IP)
 df_sig  db      0BFh, 0C2h, 0Ch, 50h, 51h, 57h, 32h, 0C0h, 0F3h, 0AAh
         db      5Fh, 59h, 58h, 0E8h, 5Bh, 26h
 DF_SIG_LEN equ  $ - df_sig

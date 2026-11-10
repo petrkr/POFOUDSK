@@ -1,4 +1,4 @@
-/* put_udec() - see tinynum.c. Separate unit, see tinyhex.c. */
+/* put_udec() - own unit, ld86 links whole objects. */
 
 #include "tinynum.h"
 

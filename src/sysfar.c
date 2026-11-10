@@ -1,17 +1,12 @@
-/* POFOUDSK.SYS asm helpers - BCC has no `far` pointers, no inp/outp and
- * no int86, so everything touching another segment, the CH375 data
- * port in bulk, DOS or the Portfolio BIOS lives here as #asm bodies.
- * Each function sets up its own bp frame (a body that is only #asm
- * gets no BCC prologue), cdecl args at 4/6/8/10[bp]. See sys.h.
- */
+/* Asm helpers: far memory, bulk port output, DOS print, PID check. Each
+ * sets up its own bp frame (an #asm-only body gets no BCC prologue);
+ * args at 4/6/8/10[bp]. */
 
 #include "sys.h"
 
-/* PID identification byte for the CH375 card, set by a jumper on the
- * board. */
+/* PID id of the CH375 card (board jumper) */
 #define PID_ID_CH375 0x75
 
-/* --- far memory helpers (seg:off), asm bodies, cdecl args at 4/6[bp] --- */
 
 unsigned char peek_b(seg, off)
 unsigned int seg;
@@ -98,12 +93,7 @@ unsigned int off;
 #endasm
 }
 
-/* Bulk far copy: DS:src (near, our own data/stack segment - always
- * true while the driver runs, since _interrupt sets DS=ES=SS=CS) to
- * dst_seg:dst_off, len bytes. `rep movsb` is an 8088 instruction (no
- * `rep insb`/186+ needed) - used by READ on a real unit to move each
- * 64-byte USB chunk straight into the DOS far transfer buffer instead
- * of a poke_b-per-byte loop. */
+/* DS:src -> dst_seg:dst_off, len bytes. */
 void far_copy(dst_seg, dst_off, src, len)
 unsigned int dst_seg;
 unsigned int dst_off;
@@ -133,9 +123,7 @@ unsigned int len;
 #endasm
 }
 
-/* Far memory fill with zero: dst_seg:dst_off, len bytes (`rep stosb`,
- * 8088-safe) - used to clear each virtual disk sector before the few
- * template bytes are copied in. */
+/* Zero len bytes at dst_seg:dst_off. */
 void far_fill(dst_seg, dst_off, len)
 unsigned int dst_seg;
 unsigned int dst_off;
@@ -162,12 +150,7 @@ unsigned int len;
 #endasm
 }
 
-/* Bulk far-to-port output: DS:src (far DOS buffer) -> port 807Eh
- * (CH375 data port), len bytes. Mirrors far_copy() in spirit, but
- * drives the data port instead of ES:DI - `lodsb`/`out dx,al` are both
- * 8088-safe. Used by the WRITE supplier (real_chunk_supplier() below)
- * to hand each 64-byte chunk straight from the DOS far transfer buffer
- * to the chip, no intermediate peek_b-per-byte loop. */
+/* src_seg:src_off -> CH375 data port 807Eh, len bytes. */
 void far_out(src_seg, src_off, len)
 unsigned int src_seg;
 unsigned int src_off;
@@ -222,9 +205,7 @@ char *s;
 #endasm
 }
 
-/* PID presence check (Atari Portfolio BIOS, int 61h/ah=1Ah):
- * AL=0 -> no PID card present; AL!=0 -> present, AH = PID id byte.
- * Returns 1 only if a card with PID_ID_CH375 is present. */
+/* INT 61h/1Ah: 1 if a PID card with PID_ID_CH375 is present. */
 unsigned char pid_check()
 {
 #asm
