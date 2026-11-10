@@ -51,8 +51,7 @@ unsigned int lo;
 }
 
 /* "<n>MB" for a 512-byte-sector count hi:lo - sectors / 2048 as a
- * 32-bit right shift by 11 across the pair, same as CH375.SYS's
- * INFO.TXT. No terminator. */
+ * 32-bit right shift by 11 across the pair. No terminator. */
 char *put_mb(out, hi, lo)
 char *out;
 unsigned int hi;

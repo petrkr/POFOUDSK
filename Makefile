@@ -3,12 +3,12 @@
 BUILD_DIR := build
 
 # Shared Portfolio library (tinylib etc.). CH375.COM links tinylib.c,
-# which #includes tinynum.c; CH375.SYS links tinynum.c alone (no libc,
+# which #includes tinynum.c; CH375.SYS links only tinyhex.c (no libc,
 # no varargs) - never both in one program.
 POFOLIB := lib/pofo
 
 CH375_SRC := src/ch375cli.c src/disk.c src/ch375det.c src/ch375part.c src/ch375disk.c src/ch375core.c src/port.c $(POFOLIB)/tinylib.c
-CH375_HDR := src/disk.h src/ch375disk.h src/ch375.h src/port.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c
+CH375_HDR := src/disk.h src/ch375disk.h src/ch375.h src/port.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c $(POFOLIB)/tinyhex.c $(POFOLIB)/tinydec.c
 CH375_BIN := $(BUILD_DIR)/CH375.COM
 
 CH375SYS_BIN := $(BUILD_DIR)/CH375.SYS
@@ -57,7 +57,7 @@ $(CH375_BIN): $(CH375_SRC) $(CH375_HDR) | $(BUILD_DIR)
 # driver-safe units (no libc, no unsigned-long runtime helpers) - never
 # disk.c/ch375det.c, which are CLI only. See src/sys.h.
 SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk ch375part port
-SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinynum.o $(BUILD_DIR)/sysdirfix.o
+SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinyhex.o $(BUILD_DIR)/sysdirfix.o
 SYS_HDR := src/ch375.h src/ch375disk.h src/port.h $(POFOLIB)/tinynum.h src/sys.h src/ch375sys_version.h
 
 $(BUILD_DIR)/%.o: src/%.c $(SYS_HDR) | $(BUILD_DIR)

@@ -5,7 +5,7 @@
  *     buffer -> data port, DOS $-string print, PID check),
  *   - sysmount.c: controller/USB state machine (guard), mount/unmount
  *     and per-unit state,
- *   - sysvdisk.c: virtual INFO disk (sector generator, INFO.TXT text).
+ *   - sysvdisk.c: virtual status disk (sector generator, volume label).
  * ch375sys.c must stay first on the ld86 command line - its #asm
  * device header has to land at file offset 0.
  */
@@ -32,7 +32,6 @@ extern unsigned char cur_unit;
 extern unsigned char unit_count;
 extern unsigned char ioctl_last_cmd;
 extern char msg_version[];
-#define MSG_VERSION_LEN 35 /* msg_version minus its trailing '$' */
 
 /* --- sysfar.c --- */
 extern unsigned char peek_b();

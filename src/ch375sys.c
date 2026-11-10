@@ -14,7 +14,7 @@
  * This unit holds the device header, the strategy/interrupt
  * trampolines with the driver's own stack, request dispatch and the
  * DOS command handlers. Units without a usable real partition get the
- * virtual INFO disk (sysvdisk.c). See sys.h for the module split.
+ * virtual status disk (sysvdisk.c). See sys.h for the module split.
  *
  * C+asm split: device header and strategy/interrupt trampolines are
  * hand-written asm here, far memory and port helpers in sysfar.c (BCC
@@ -144,8 +144,7 @@ static unsigned int saved_sp;
  * matches version.h's current values) and 8 build-id hex digits
  * filled in at INIT time, same info/format as PFTC's startup title
  * (pftc.c: "PFTC v%u.%u.%u (%x%x%x%x)") but without printf/stdio.
- * Also reused (minus the trailing '$', MSG_VERSION_LEN) as the version
- * line appended to the virtual disk's INFO.TXT. */
+ */
 char msg_version[] = "CH375.SYS v0.0.0 (build 00000000)\r\n$";
 #define MSG_VER_MAJOR_OFFSET 11
 #define MSG_VER_MINOR_OFFSET 13
@@ -155,12 +154,14 @@ char msg_version[] = "CH375.SYS v0.0.0 (build 00000000)\r\n$";
 static char msg_found[]      = "CH375 controller found, IC ver=  \r\n$";
 #define MSG_VER_OFFSET 31 /* two hex-digit placeholder before \r */
 
-static char msg_not_found[]  = "CH375 controller not present (ok for now)\r\n$";
+static char msg_not_found[]  = "CH375 controller not present\r\n$";
 
-static char msg_units[] = "Units: 0\r\n$";
+static char msg_units[] = "Units: 0, DIRFIX $";
 #define MSG_UNITS_OFFSET 7
+static char msg_dirfix_on[] = "on\r\n$";
+static char msg_dirfix_off[] = "off\r\n$";
 
-static char msg_dirfix_bad[] = "DIRFIX: unsupported ROM\r\n$";
+static char msg_dirfix_bad[] = "unsupported ROM\r\n$";
 
 static unsigned int bpb_array[MAX_UNITS];
 
@@ -314,8 +315,11 @@ static void cmd_init()
     probe_controller(); /* reports state guard() already set at dispatch entry; soft-fail: never changes REQ_UNITS/status below */
     msg_units[MSG_UNITS_OFFSET] = '0' + unit_count;
     print_dollar_string(msg_units);
-
-    if (!nodirfix && !dirfix_install())
+    if (nodirfix)
+        print_dollar_string(msg_dirfix_off);
+    else if (dirfix_install())
+        print_dollar_string(msg_dirfix_on);
+    else
         print_dollar_string(msg_dirfix_bad);
 
     /* DOS gets the virtual BPB right here, so the id it was just

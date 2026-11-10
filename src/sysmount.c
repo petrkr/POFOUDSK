@@ -119,7 +119,7 @@ void drop_controller()
  * controller itself is lost (guard()). current_content_id() ignores
  * units[]/mount_gen whenever ctrl_state != CONTROLLER_OK or
  * !usb_state (it reports a fixed id for those cases), so this mainly
- * matters for INFO.TXT/IOCTL cosmetics and for the next real mount to
+ * matters for the status label/IOCTL cosmetics and for the next real mount to
  * start from a clean state. */
 void unmount_all()
 {

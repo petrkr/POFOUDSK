@@ -12,6 +12,6 @@
  * available to link against in this driver build - see ch375sys.c's
  * print_version(). */
 #define CH375SYS_BUILD_ID_HI 0xFFFF
-#define CH375SYS_BUILD_ID_LO 0x000B
+#define CH375SYS_BUILD_ID_LO 0x000C
 
 #endif
