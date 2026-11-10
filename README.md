@@ -99,6 +99,14 @@ different ROM version, please test it and open an issue with the result
 (the boot line shows `DIRFIX on` or `unsupported ROM`) - we can then
 agree on a ROM dump and add DIRFIX support for that version.
 
+## Known issues
+
+- **After sleep/wake** the driver may stop reacting to plugging and
+  unplugging the flash disk, and disk access ends with a DOS error 11
+  (read fault). Workaround: remove and reinsert the PID card, or reboot.
+  Probable cause (unverified): the CH375 loses power or is reset during
+  sleep and leaves USB host mode without raising an interrupt.
+
 ## Status
 
 Developed and tested mainly in MAME with a real CH375 attached; the
