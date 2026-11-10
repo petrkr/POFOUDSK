@@ -53,31 +53,51 @@ driver loaded it probes the CH375 and the USB disk directly.
 
 ## Preparing a flash disk
 
-Format the partitions on a PC. DOS on the Portfolio only knows FAT12,
-16-bit sector counts and uses a single FAT:
+Partition and format the flash disk on a PC:
 
 ```
 mkfs.fat -F 12 -f 1 -S 512 -s <sectors per cluster> /dev/sdXn
 ```
 
-Partition type must be `01` (FAT12). With `-s 1` a partition is limited
-to ~2 MB (4084 clusters).
+- **FAT12** only, MBR partition type `01` (or a superfloppy without MBR).
+- At most **65535 sectors** per partition (32 MB - 512 B) - DOS 2.x has a
+  16-bit sector count.
+- **One FAT** (`-f 1`): Portfolio DOS only ever updates the first FAT.
+  With the `mkfs.fat` default of two FATs the second copy goes stale,
+  `fsck.fat` reports "FATs differ" - and repairing from the second copy
+  would lose data.
+- Not supported: FAT16, FAT32, GPT, more than 4 partitions per disk.
+
+### Supported formats
+
+| sectors per cluster | max. partition size | with DIRFIX (ROM 1.072) | without DIRFIX (other ROM or `/NODIRFIX`) |
+|---|---|---|---|
+| 1 | ~2 MB | full | full |
+| 2 | ~4 MB | full | read/write files; `MKDIR` and filling a subdirectory hang DOS |
+| 4 | ~8 MB | full (tested) | same as above |
+| 8 | ~16 MB | full | same as above |
+| 16, 32 | 32 MB | full | same as above |
+
+The limit per row is 4084 clusters (FAT12), capped at 65535 sectors.
 
 ## ROM compatibility
 
 | DIP ROM | driver | DIRFIX |
 |---|---|---|
-| 1.072 | tested | **tested, compatible** |
-| 1.052, 1.056, 1.130, other | untested | not compatible - not installed (`unsupported ROM`) |
+| 1.072 | tested | tested |
+| 1.052, 1.056, 1.130, other | expected to work, untested | not installed (`unsupported ROM`) |
 
-DIRFIX patches code at fixed ROM addresses and only installs on 1.072.
-On other ROM versions use **one sector per cluster** (partitions up to
-~2 MB): the DOS bug only occurs with more than one sector per cluster.
-Larger clusters work for reading and writing files, but `MKDIR` or
-filling a subdirectory can hang the machine and corrupt the file system.
+The driver only uses the standard DOS 2.x driver interface and the
+Portfolio BIOS PID call, so it should work on any ROM version. DIRFIX
+patches DOS code at ROM 1.072 addresses and checks them before it
+installs; on any other ROM it stays off and only one-sector clusters are
+safe for directories (see the table above).
 
-If you have a different ROM version, please open an issue - DIRFIX can
-be extended once someone needs it.
+We only have ROM 1.072 available, so we cannot test the driver on the
+other versions or port DIRFIX to them. If you own a Portfolio with a
+different ROM version, please test it and open an issue with the result
+(the boot line shows `DIRFIX on` or `unsupported ROM`) - we can then
+agree on a ROM dump and add DIRFIX support for that version.
 
 ## Status
 
