@@ -3,6 +3,6 @@
 
 /* Build id; CI overwrites this file with the git short hash. Local
  * builds use 0xFFFFxxxx. */
-#define POFOUDSK_BUILD_ID 0xFFFF000FUL
+#define POFOUDSK_BUILD_ID 0xFFFF0010UL
 
 #endif

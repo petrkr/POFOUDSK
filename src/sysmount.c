@@ -239,9 +239,13 @@ static void check_usb_event()
 /* TEST_CONNECT resync, called from MEDIA_CHECK: catches a CH375 that
  * was reset (e.g. Portfolio sleep/wake) without raising an interrupt.
  * The sleep/wake case is unverified on real HW. */
+/* INT# polls after SET_USB_MODE 06h - untuned, not measured on HW. */
+#define RESYNC_CONNECT_POLLS 200U
+
 void test_connect_resync()
 {
     unsigned char result;
+    unsigned int i;
 
     tr_cmd(CMD_TEST_CONNECT);
     result = tr_rdata();
@@ -254,6 +258,18 @@ void test_connect_resync()
     if (result == USB_INT_DISCONNECT) {
         if (usb_state)
             unmount_all(); /* missed unplug */
+        /* A CH375 after power-on reset (Portfolio sleep cuts 5 V) is in
+         * device mode and also answers 16h. Re-enter host mode: an
+         * attached disk then raises CONNECT (~0.4 ms on the chip), none
+         * - no interrupt. Mount now, so this MEDIA_CHECK already sees
+         * the disk. */
+        ch375_set_usb_mode(MODE_HOST_SOF);
+        for (i = 0; i < RESYNC_CONNECT_POLLS; i++) {
+            if ((tr_token() & 0x80) == 0) {
+                check_usb_event();
+                break;
+            }
+        }
     } else if (result == USB_INT_CONNECT) {
         if (usb_state)
             unmount_all(); /* connected but not initialized = device reset */
