@@ -7,6 +7,6 @@
 
 /* Build id as two 16-bit halves (no long helpers in the driver). */
 #define POFOUDSK_BUILD_ID_HI 0xFFFF
-#define POFOUDSK_BUILD_ID_LO 0x000D
+#define POFOUDSK_BUILD_ID_LO 0x000E
 
 #endif
