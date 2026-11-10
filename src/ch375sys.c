@@ -144,9 +144,7 @@ static unsigned int saved_sp;
 
 /* "POFOUDSK vM.m.p (build XXXXXXXX)\r\n$" - single-digit M/m/p (0-9,
  * matches version.h's current values) and 8 build-id hex digits
- * filled in at INIT time, same info/format as PFTC's startup title
- * (pftc.c: "PFTC v%u.%u.%u (%x%x%x%x)") but without printf/stdio.
- */
+ * filled in at INIT time, without printf/stdio. */
 char msg_version[] = "POFOUDSK v0.0.0 (build 00000000)\r\n$";
 #define MSG_VER_MAJOR_OFFSET 10
 #define MSG_VER_MINOR_OFFSET 12

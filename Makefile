@@ -25,10 +25,10 @@ LD86 ?= ld86
 # real ESP on the network, e.g.: make upload HOST=10.220.179.55
 HOST ?= 127.0.0.1
 PORT ?= 9000
-# Empty by default - the bridge's own C:\ default then applies (see
-# the upload target below). A trailing backslash in a Makefile
-# variable is line continuation, not a literal character, so don't
-# set one here; override as e.g. make upload DEST_DIR='D:\SOMEDIR\'.
+# Empty by default - the bridge's own C:\ default then applies. A
+# trailing backslash in a Makefile variable is line continuation, not
+# a literal character, so don't set one here; override as e.g.
+# make upload DEST_DIR='D:\SOMEDIR\'.
 DEST_DIR ?=
 
 NASM ?= nasm
@@ -86,28 +86,23 @@ $(BUILD_DIR)/sysdirfix.o: src/sysdirfix.asm src/dirfix.inc | $(BUILD_DIR)
 $(POFOUDSK_SYS_BIN): $(SYS_OBJS)
 	$(LD86) -0 -d -o $@ $(SYS_OBJS)
 
-# Assumes the bridge (or ESP smart-cable client) is already running at
-# HOST:PORT and the Portfolio is sitting in File Transfer Server mode.
-# Direct curl multipart POST to the bridge's /upload endpoint - destDir
-# is a query param, left off entirely when DEST_DIR is empty so the
-# bridge's own C:\ default applies. DEST_DIR_ENC substitutes %5C for \
+# Assumes the bridge is already running at HOST:PORT and the Portfolio
+# is sitting in File Transfer Server mode. Direct curl multipart POST
+# to the bridge's /upload endpoint. DEST_DIR_ENC substitutes %5C for \
 # (DOS path separator) since it's going into a URL query string, not
-# shell-quoted - Make's $(subst) does this without needing a subshell/
-# sed call.
+# shell-quoted; already-encoded overrides (e.g. SYS_DEST_DIR_ENC) must
+# use %5C directly for the same reason.
 DEST_DIR_ENC = $(subst \,%5C,$(DEST_DIR))
 
 UPLOAD_BASE = http://$(HOST):$(PORT)/uploadFile?toAtari=1&overwrite=1
 UPLOAD_URL = $(UPLOAD_BASE)$(if $(DEST_DIR),&destDir=$(DEST_DIR_ENC))
 
-# POFOUDSK.SYS goes to the A: memory card by default (C: is too small for
-# both files) - CONFIG.SYS then needs DEVICE=A:\POFOUDSK.SYS. Given
-# already URL-encoded (%5C = \) for the same trailing-backslash reason
-# as DEST_DIR above; override e.g. make upload-sys SYS_DEST_DIR_ENC=B:%5C
+# POFOUDSK.SYS goes to the A: memory card by default (C: is too small
+# for both files) - CONFIG.SYS then needs DEVICE=A:\POFOUDSK.SYS.
 SYS_DEST_DIR_ENC ?= A:%5C
 
-# upload = both files (POFOUDSK.SYS and POFOUDSK.COM must match - the IOCTL
-# reply layout is shared), upload-com / upload-sys = just one. One
-# file per POST, one transfer at a time over the cable.
+# upload = both files (POFOUDSK.SYS/.COM must match - shared IOCTL
+# reply layout), upload-com / upload-sys = just one.
 upload: upload-sys upload-com
 
 upload-com: $(POFOUDSK_COM_BIN)

@@ -119,10 +119,8 @@ unsigned int ms;
 }
 
 /* Delay between bus reset (mode 07h) and enable (mode 06h) - the
- * reset must actually last on the bus. Found necessary on HW with the
- * original ch375.asm (delay_long between the two mode switches);
- * the exact length used there wasn't recorded, 50 ms is a safe
- * guess. */
+ * reset must actually last on the bus. Needed on HW; 50 ms is an
+ * unverified guess, not measured. */
 #define HOST_RESET_MS 50
 
 /* Datasheet 5.9: "enter mode 7 first and then switch to mode 6".

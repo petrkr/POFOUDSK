@@ -30,8 +30,7 @@
 char ch375disk_vendor[9];
 char ch375disk_product[17];
 
-/* Upper bound on RD_USB_DATA blocks drained after DISK_INIT - same
- * value the original ch375.asm drain used. */
+/* Upper bound on RD_USB_DATA blocks drained after DISK_INIT. */
 #define DRAIN_MAX_BLOCKS 32
 
 /* Observed on HW: DISK_INIT/DISK_SIZE may report success as
@@ -43,9 +42,8 @@ int s;
     return (s == CMD_RET_SUCCESS) ? USB_INT_SUCCESS : s;
 }
 
-/* Observed on HW (original ch375.asm): DISK_INIT internally runs a
- * SCSI INQUIRY and leaves its 36-byte reply queued in the chip's read
- * buffer. Unless drained, RD_USB_DATA after the next command (e.g.
+/* Observed on HW: DISK_INIT internally runs a SCSI INQUIRY and leaves
+ * its 36-byte reply queued in the chip's read buffer. Unless drained, RD_USB_DATA after the next command (e.g.
  * DISK_SIZE) returns these stale bytes instead of its own data. Drain
  * until an empty block, keeping vendor (bytes 8-15) and product
  * (16-31) from the first block that holds them. */
@@ -79,9 +77,7 @@ unsigned int ch375disk_sector_count_lo;
 unsigned int ch375disk_sector_size_hi;
 unsigned int ch375disk_sector_size_lo;
 
-/* DISK_INIT (datasheet 5.15) - see ch375.c's older comment for the
- * full protocol rationale; moved here because it has no stdio/long
- * dependency and belongs with the rest of the disk-level layer. */
+/* DISK_INIT (datasheet 5.15). */
 ch375disk_init()
 {
     int status;
@@ -95,13 +91,12 @@ ch375disk_init()
     return status;
 }
 
-/* DISK_SIZE (datasheet 5.16) - same protocol/off-by-one as the old
- * ch375.c version (see git history), but result is hi/lo unsigned int
- * pairs (ch375disk_sector_count_hi/lo, ch375disk_sector_size_hi/lo)
- * instead of `unsigned long`, so this is safe to link into the
- * driver. Both chip fields are big-endian 4-byte values; the raw
- * sector count field is the last valid LBA, so it is incremented by
- * one here (with hi/lo carry) to get the actual sector count. */
+/* DISK_SIZE (datasheet 5.16) - result kept as hi/lo unsigned int pairs
+ * (ch375disk_sector_count_hi/lo, ch375disk_sector_size_hi/lo) instead
+ * of `unsigned long`, so this stays safe to link into the driver.
+ * Both chip fields are big-endian 4-byte values; the raw sector count
+ * field is the last valid LBA, so it is incremented by one here (with
+ * hi/lo carry) to get the actual sector count. */
 /* DISK_R_SENSE (5Ah): SCSI REQUEST SENSE - clears a pending check
  * condition (e.g. Unit Attention after reset) so the next command can
  * succeed. Its sense data, if queued, is drained and discarded.
@@ -176,9 +171,8 @@ static int disk_size_once()
 }
 
 /* DISK_READ (datasheet 5.22) + DISK_RD_GO (5.18), streaming variant:
- * same protocol as the old ch375.c ch375_disk_read(), but LBA is an
- * hi/lo unsigned int pair (not `unsigned long`) and instead of
- * filling a 512-byte buffer, each 64-byte chunk is handed to the
+ * LBA is an hi/lo unsigned int pair (not `unsigned long`), and instead
+ * of filling a 512-byte buffer, each 64-byte chunk is handed to the
  * caller-supplied handler as it arrives: handler(offset, chunk, len).
  * No buffer larger than 64 bytes is ever kept here. */
 ch375disk_read_sector(lba_hi, lba_lo, handler)

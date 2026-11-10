@@ -6,7 +6,7 @@
  *     data") for the driver's "POFOUDSK" signature. If found, use
  *     IOCTL only (driver version + ctrl_state) and never touch the
  *     CH375 ports directly - that would desync the driver's own guard
- *     state machine. More IOCTL commands land in a later phase.
+ *     state machine.
  *   - No driver: direct hardware mode. PID check (INT 61h/AH=1Ah,
  *     ID 0x75, same check the driver itself does) before any port
  *     access, then CHECK_EXIST, IC version, USB host mode (reset +
@@ -32,8 +32,7 @@
 
 /* Set by call_ioctl() as a side effect (its body is #asm only, so it
  * can't just return two values) - carry flag after INT 21h: 1 = CF
- * set (DOS rejected/doesn't support the call), 0 = CF clear. Same
- * pattern as the removed ioctltst.c. */
+ * set (DOS rejected/doesn't support the call), 0 = CF clear. */
 static unsigned char dos_carry;
 
 /* AH=44h dispatcher - al picks the IOCTL subfunction, bl the drive
@@ -104,12 +103,6 @@ static char ioctl_buf[IOCTL_SIG_LEN];
 #define IOCTL_V1_LEN (IOCTL_SIG_LEN + 3 + 8 + 16 + 4 + 4 * 10)
 static unsigned char v1_buf[IOCTL_V1_LEN];
 
-/* Unit status codes, matching ch375disk.h's CH375DISK_UNIT_* - used
- * here only for display, not protocol logic. */
-
-/* Prints the per-unit summary lines from an already-fetched v1_buf -
- * one line per unit, drive letter = first_letter + unit index (unit n
- * = MBR partition n+1). */
 static unsigned int get16(p)
 unsigned char *p;
 {
@@ -130,6 +123,9 @@ unsigned char *r;
     return fmt(p, ": v%u.%u.%u st%x", r[8], r[9], r[10], r[11]);
 }
 
+/* Prints the per-unit summary lines from an already-fetched v1_buf -
+ * one line per unit, drive letter = first_letter + unit index (unit n
+ * = MBR partition n+1). */
 static void print_units(first_letter, unit_count)
 char first_letter;
 unsigned char unit_count;

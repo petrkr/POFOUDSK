@@ -8,7 +8,7 @@
 #include "sys.h"
 
 /* PID identification byte for the CH375 card, set by a jumper on the
- * board - this value matches the current dev board jumper setting. */
+ * board. */
 #define PID_ID_CH375 0x75
 
 /* --- far memory helpers (seg:off), asm bodies, cdecl args at 4/6[bp] --- */

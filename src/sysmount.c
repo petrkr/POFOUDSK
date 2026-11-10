@@ -282,7 +282,7 @@ static void check_usb_event()
         mount_usb();
     else if (status == USB_INT_DISCONNECT)
         unmount_all();
-    /* any other code: ignore, same as before */
+    /* any other code: ignore */
 }
 
 /* TEST_CONNECT (0x16, datasheet 5.10) - no interrupt, finishes in
