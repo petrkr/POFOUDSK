@@ -1,4 +1,4 @@
-.PHONY: all ch375 sys upload clean
+.PHONY: all ch375 sys dirfix upload upload-com upload-sys upload-dirfix clean
 
 BUILD_DIR := build
 
@@ -27,11 +27,21 @@ PORT ?= 9000
 # set one here; override as e.g. make upload DEST_DIR='D:\SOMEDIR\'.
 DEST_DIR ?=
 
-all: ch375 sys
+NASM ?= nasm
+DIRFIX_BIN := $(BUILD_DIR)/DIRFIX.COM
+
+all: ch375 sys dirfix
 
 ch375: $(CH375_BIN)
 
 sys: $(CH375SYS_BIN)
+
+dirfix: $(DIRFIX_BIN)
+
+# Standalone MKDIR/directory-extension fix (see src/dirfix.inc,
+# src/dirfix.asm) - also built into CH375.SYS, see sysdirfix below.
+$(DIRFIX_BIN): src/dirfix.asm src/dirfix.inc | $(BUILD_DIR)
+	$(NASM) -f bin -I src/ -o $@ src/dirfix.asm
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -41,14 +51,13 @@ $(CH375_BIN): $(CH375_SRC) $(CH375_HDR) | $(BUILD_DIR)
 
 # CH375.SYS - device header must land at file offset 0, so this uses
 # the as86 -u -o (object) + ld86 -0 -d (tiny/impure link) pipeline
-# instead of as86 -b, same reasoning as vdiskc3.c/sysdriver.md: as86
-# -b always places .data before .text regardless of source order,
+# instead of as86 -b: as86 -b always places .data before .text regardless of source order,
 # which would push the hand-written header away from offset 0; ld86
 # -d keeps .text/.data/.bss in source order instead. Links only the
 # driver-safe units (no libc, no unsigned-long runtime helpers) - never
 # disk.c/ch375det.c, which are CLI only. See src/sys.h.
 SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk ch375part port
-SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinynum.o
+SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinynum.o $(BUILD_DIR)/sysdirfix.o
 SYS_HDR := src/ch375.h src/ch375disk.h src/port.h $(POFOLIB)/tinynum.h src/sys.h src/ch375sys_version.h
 
 $(BUILD_DIR)/%.o: src/%.c $(SYS_HDR) | $(BUILD_DIR)
@@ -58,6 +67,11 @@ $(BUILD_DIR)/%.o: src/%.c $(SYS_HDR) | $(BUILD_DIR)
 $(BUILD_DIR)/%.o: $(POFOLIB)/%.c $(SYS_HDR) | $(BUILD_DIR)
 	$(BCC) -0 -Md -I$(POFOLIB) -S -o $(BUILD_DIR)/$*_bcc.s $<
 	$(AS86) -0 -u -o $@ $(BUILD_DIR)/$*_bcc.s
+
+# DIRFIX glue (see src/dirfix.inc, src/sysdirfix.asm) - nasm assembles
+# directly to an as86-compatible object, no bcc step.
+$(BUILD_DIR)/sysdirfix.o: src/sysdirfix.asm src/dirfix.inc | $(BUILD_DIR)
+	$(NASM) -f as86 -I src/ -o $@ $<
 
 # ch375sys.o must stay first - its #asm device header has to land at
 # file offset 0.
@@ -74,9 +88,28 @@ $(CH375SYS_BIN): $(SYS_OBJS)
 # sed call.
 DEST_DIR_ENC = $(subst \,%5C,$(DEST_DIR))
 
-upload: $(CH375_BIN)
-	curl -sf -F "file=@$(CH375_BIN)" \
-		"http://$(HOST):$(PORT)/uploadFile?toAtari=1&overwrite=1$(if $(DEST_DIR),&destDir=$(DEST_DIR_ENC))"
+UPLOAD_BASE = http://$(HOST):$(PORT)/uploadFile?toAtari=1&overwrite=1
+UPLOAD_URL = $(UPLOAD_BASE)$(if $(DEST_DIR),&destDir=$(DEST_DIR_ENC))
+
+# CH375.SYS goes to the A: memory card by default (C: is too small for
+# both files) - CONFIG.SYS then needs DEVICE=A:\CH375.SYS. Given
+# already URL-encoded (%5C = \) for the same trailing-backslash reason
+# as DEST_DIR above; override e.g. make upload-sys SYS_DEST_DIR_ENC=B:%5C
+SYS_DEST_DIR_ENC ?= A:%5C
+
+# upload = both files (CH375.SYS and CH375.COM must match - the IOCTL
+# reply layout is shared), upload-com / upload-sys = just one. One
+# file per POST, one transfer at a time over the cable.
+upload: upload-sys upload-com
+
+upload-com: $(CH375_BIN)
+	curl -sf -F "file=@$(CH375_BIN)" "$(UPLOAD_URL)"
+
+upload-dirfix: $(DIRFIX_BIN)
+	curl -sf -F "file=@$(DIRFIX_BIN)" "$(UPLOAD_URL)"
+
+upload-sys: $(CH375SYS_BIN)
+	curl -sf -F "file=@$(CH375SYS_BIN)" "$(UPLOAD_BASE)&destDir=$(SYS_DEST_DIR_ENC)"
 
 clean:
 	rm -rf $(BUILD_DIR)
