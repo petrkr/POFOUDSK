@@ -1,4 +1,4 @@
-/* CH375.SYS asm helpers - BCC has no `far` pointers, no inp/outp and
+/* POFOUDSK.SYS asm helpers - BCC has no `far` pointers, no inp/outp and
  * no int86, so everything touching another segment, the CH375 data
  * port in bulk, DOS or the Portfolio BIOS lives here as #asm bodies.
  * Each function sets up its own bp frame (a body that is only #asm

@@ -1,12 +1,12 @@
-/* Presentation helpers for the ch375disk.c/ch375part.c disk-level
- * layer. CLI-only (CH375.COM) - prints through lib/pofo tinylib
- * (fmt() + con_puts()), never linked into CH375.SYS. Takes the hi/lo
- * structures the disk layer produces and prints them in human-readable
- * form; no CH375 protocol logic of its own.
+/* Presentation helpers for the lib/pofoch375 ch375disk.c / src/part.c
+ * disk-level layer. CLI-only (POFOUDSK.COM) - prints through lib/pofo
+ * tinylib (fmt() + con_puts()), never linked into POFOUDSK.SYS. Takes
+ * the hi/lo structures the disk layer produces and prints them in
+ * human-readable form; no CH375 protocol logic of its own.
  */
 
-#include "ch375.h"
 #include "ch375disk.h"
+#include "part.h"
 #include "disk.h"
 #include "tinylib.h"
 #include "tinynum.h"

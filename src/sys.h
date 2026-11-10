@@ -1,4 +1,4 @@
-/* CH375.SYS internal interface, shared by its units:
+/* POFOUDSK.SYS internal interface, shared by its units:
  *   - ch375sys.c: device header, strategy/interrupt trampolines, own
  *     stack, request dispatch and the DOS command handlers,
  *   - sysfar.c:   asm helpers (far memory peek/poke/copy/fill, far
@@ -17,7 +17,7 @@
 #define STATE_CONTROLLER_OK 1
 
 struct unit_state {
-    unsigned char status;   /* CH375DISK_UNIT_* (ch375disk.h) */
+    unsigned char status;   /* CH375DISK_UNIT_* (pofoudsk.h) */
     unsigned char reason;   /* CH375DISK_UNIT_REASON_* - valid only if status == UNSUPPORTED */
     unsigned char part_type; /* MBR partition type byte, 0 for superfloppy/none */
     unsigned int start_hi;

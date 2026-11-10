@@ -1,5 +1,5 @@
 /* CH375 low-level primitives safe to link into the device driver
- * (CH375.SYS) as well as the CLI - no stdio, no unsigned-long BCC
+ * (POFOUDSK.SYS) as well as the CLI - no stdio, no unsigned-long BCC
  * runtime helpers. ch375disk.c builds the driver-safe disk-level
  * layer (DISK_SIZE, streaming sector read, MBR/BPB parsing) on top of
  * these; disk.c then adds CLI-only printf/unsigned-long presentation

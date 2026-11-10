@@ -3,7 +3,7 @@
  * SENSE and streaming single-sector READ/WRITE. Builds on top of
  * ch375core.c's primitives - never printf, never BCC's unsigned-long
  * runtime helpers, never a 512-byte sector buffer, so this file stays
- * linkable into CH375.SYS as well as CH375.COM. MBR/BPB parsing lives
+ * linkable into POFOUDSK.SYS as well as POFOUDSK.COM. MBR/BPB parsing lives
  * in ch375part.c, CLI-only blocking detect in ch375det.c.
  */
 

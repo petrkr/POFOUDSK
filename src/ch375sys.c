@@ -1,4 +1,4 @@
-/* CH375.SYS - block device driver.
+/* POFOUDSK.SYS - block device driver.
  *
  * Registers with DOS, claims a fixed number of drive letters (/N:x,
  * MAX_UNITS primary MBR partitions), and runs a guard() state machine
@@ -26,15 +26,17 @@
  * neither ours nor big.
  *
  * Build: see Makefile (sys target) - bcc -S, as86 -u -o, ld86 -0 -d,
- * this object first; links ch375core.c, ch375disk.c, ch375part.c and
- * lib/pofo/tinynum.c (driver-safe) - never disk.c/ch375det.c (CLI only).
+ * this object first; links lib/pofoch375's ch375core.c/ch375disk.c,
+ * src/part.c and lib/pofo/tinynum.c (driver-safe) - never
+ * disk.c/ch375det.c/partpick.c (CLI only).
  */
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "pofoudsk.h"
 #include "tinynum.h"
 #include "sys.h"
-#include "ch375sys_version.h"
+#include "pofoudsk_version.h"
 
 #define ST_DONE    0x0100
 #define ST_ERROR   0x8000
@@ -70,7 +72,7 @@
 #define CMD_WRITE_VERIFY  9
 #define CMD_IOCTL_OUT     0x0C
 
-/* Unit count comes from CONFIG.SYS: DEVICE=CH375.SYS /N:x, x in
+/* Unit count comes from CONFIG.SYS: DEVICE=POFOUDSK.SYS /N:x, x in
  * 1..MAX_UNITS (default 1). Unit n maps to MBR primary partition n+1,
  * so MAX_UNITS = 4 primary partitions (CH375DISK_PART_COUNT). */
 #define DEFAULT_UNITS 1
@@ -140,16 +142,16 @@ static unsigned int saved_sp;
  * (confirmed: DOS assigned E:, it read back as 0), so the assigned
  * letter is not printed. */
 
-/* "CH375.SYS vM.m.p (build XXXXXXXX)\r\n$" - single-digit M/m/p (0-9,
+/* "POFOUDSK vM.m.p (build XXXXXXXX)\r\n$" - single-digit M/m/p (0-9,
  * matches version.h's current values) and 8 build-id hex digits
  * filled in at INIT time, same info/format as PFTC's startup title
  * (pftc.c: "PFTC v%u.%u.%u (%x%x%x%x)") but without printf/stdio.
  */
-char msg_version[] = "CH375.SYS v0.0.0 (build 00000000)\r\n$";
-#define MSG_VER_MAJOR_OFFSET 11
-#define MSG_VER_MINOR_OFFSET 13
-#define MSG_VER_PATCH_OFFSET 15
-#define MSG_VER_BUILDID_OFFSET 24
+char msg_version[] = "POFOUDSK v0.0.0 (build 00000000)\r\n$";
+#define MSG_VER_MAJOR_OFFSET 10
+#define MSG_VER_MINOR_OFFSET 12
+#define MSG_VER_PATCH_OFFSET 14
+#define MSG_VER_BUILDID_OFFSET 23
 
 static char msg_found[]      = "CH375 controller found, IC ver=  \r\n$";
 #define MSG_VER_OFFSET 31 /* two hex-digit placeholder before \r */
@@ -266,15 +268,15 @@ static void print_version()
 {
     char *p;
 
-    msg_version[MSG_VER_MAJOR_OFFSET] = '0' + CH375SYS_VERSION_MAJOR;
-    msg_version[MSG_VER_MINOR_OFFSET] = '0' + CH375SYS_VERSION_MINOR;
-    msg_version[MSG_VER_PATCH_OFFSET] = '0' + CH375SYS_VERSION_PATCH;
+    msg_version[MSG_VER_MAJOR_OFFSET] = '0' + POFOUDSK_VERSION_MAJOR;
+    msg_version[MSG_VER_MINOR_OFFSET] = '0' + POFOUDSK_VERSION_MINOR;
+    msg_version[MSG_VER_PATCH_OFFSET] = '0' + POFOUDSK_VERSION_PATCH;
 
     p = msg_version + MSG_VER_BUILDID_OFFSET;
-    p = put_hex2(p, CH375SYS_BUILD_ID_HI >> 8);
-    p = put_hex2(p, CH375SYS_BUILD_ID_HI & 0xFF);
-    p = put_hex2(p, CH375SYS_BUILD_ID_LO >> 8);
-    put_hex2(p, CH375SYS_BUILD_ID_LO & 0xFF);
+    p = put_hex2(p, POFOUDSK_BUILD_ID_HI >> 8);
+    p = put_hex2(p, POFOUDSK_BUILD_ID_HI & 0xFF);
+    p = put_hex2(p, POFOUDSK_BUILD_ID_LO >> 8);
+    put_hex2(p, POFOUDSK_BUILD_ID_LO & 0xFF);
 
     print_dollar_string(msg_version);
 }
@@ -517,8 +519,7 @@ unsigned char is_write;
  * worth of (type, unit status, start hi/lo, size hi/lo), all 16-bit
  * values little-endian. Writes min(requested, total) bytes, so an old
  * 13-byte reader still works unchanged. */
-#define IOCTL_V0_LEN 13
-#define IOCTL_V1_LEN (IOCTL_V0_LEN + 3 + 8 + 16 + 4 + MAX_UNITS * 10)
+#define IOCTL_V1_LEN (POFOUDSK_IOCTL_V0_LEN + 3 + 8 + 16 + 4 + MAX_UNITS * 10)
 
 static unsigned char *put16(p, v)
 unsigned char *p;
@@ -546,10 +547,10 @@ static void cmd_ioctl_in()
     struct unit_state *u;
     unsigned char reply[IOCTL_V1_LEN];
 
-    p = put_bytes(reply, "CH375SYS", 8);
-    *p++ = CH375SYS_VERSION_MAJOR;
-    *p++ = CH375SYS_VERSION_MINOR;
-    *p++ = CH375SYS_VERSION_PATCH;
+    p = put_bytes(reply, "POFOUDSK", POFOUDSK_IOCTL_SIG_LEN);
+    *p++ = POFOUDSK_VERSION_MAJOR;
+    *p++ = POFOUDSK_VERSION_MINOR;
+    *p++ = POFOUDSK_VERSION_PATCH;
     *p++ = ctrl_state;
     *p++ = ioctl_last_cmd;
 

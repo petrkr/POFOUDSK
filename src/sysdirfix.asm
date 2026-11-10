@@ -1,4 +1,4 @@
-; DIRFIX glue for CH375.SYS - links the shared fix (dirfix.inc) into
+; DIRFIX glue for POFOUDSK.SYS - links the shared fix (dirfix.inc) into
 ; the driver. Tiny model (CS=DS for the whole .SYS), so all df_ data
 ; stays in .text as initialized bytes - a .SYS's .bss is never zeroed,
 ; and df_armed must start out 0 (see sys.h / ch375sys.c).

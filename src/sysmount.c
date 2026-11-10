@@ -1,4 +1,4 @@
-/* CH375.SYS controller/USB state machine and per-unit mount state -
+/* POFOUDSK.SYS controller/USB state machine and per-unit mount state -
  * see sys.h.
  *
  * USB media mount/unmount is event-driven, not polled by blocking:
@@ -6,11 +6,14 @@
  * request while CONTROLLER_OK, and only issues GET_STATUS (and acts
  * on CONNECT/DISCONNECT) when a pending interrupt is seen. MBR parsing
  * and per-partition FAT12 suitability checks come from the shared
- * driver-safe ch375disk.c/ch375part.c layer (also used by CH375.COM).
+ * driver-safe ch375disk.c (lib/pofoch375) / part.c layer (also used by
+ * POFOUDSK.COM).
  */
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "part.h"
+#include "pofoudsk.h"
 #include "sys.h"
 
 /* Delay after USB_INT_CONNECT before DISK_INIT - lets the freshly

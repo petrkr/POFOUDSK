@@ -1,9 +1,9 @@
-/* CH375.COM - CLI client for the CH375 USB host controller.
+/* POFOUDSK.COM - CLI client for the CH375 USB host controller.
  *
  * Two modes, picked automatically, no command-line switches:
  *
- *   - CH375.SYS loaded: scan A:..E: via INT 21h/44h/04h ("read control
- *     data") for the driver's "CH375SYS" signature. If found, use
+ *   - POFOUDSK.SYS loaded: scan A:..E: via INT 21h/44h/04h ("read control
+ *     data") for the driver's "POFOUDSK" signature. If found, use
  *     IOCTL only (driver version + ctrl_state) and never touch the
  *     CH375 ports directly - that would desync the driver's own guard
  *     state machine. More IOCTL commands land in a later phase.
@@ -22,11 +22,13 @@
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "part.h"
+#include "pofoudsk.h"
 #include "disk.h"
 #include "tinylib.h"
 #include "tinynum.h"
 
-#define IOCTL_SIG_LEN 13
+#define IOCTL_SIG_LEN POFOUDSK_IOCTL_V0_LEN
 
 /* Set by call_ioctl() as a side effect (its body is #asm only, so it
  * can't just return two values) - carry flag after INT 21h: 1 = CF
@@ -71,7 +73,7 @@ ioctl_cf_done:
 }
 
 /* PID presence check (Atari Portfolio BIOS, INT 61h/AH=1Ah), same
- * check CH375.SYS's own guard() runs: AL=0 -> no PID card, AL!=0 ->
+ * check POFOUDSK.SYS's own guard() runs: AL=0 -> no PID card, AL!=0 ->
  * present, AH = PID id byte. Returns 1 only for PID_ID_CH375. Must be
  * called (and succeed) before any direct 807D/807E port access. */
 #define PID_ID_CH375 0x75
@@ -157,7 +159,7 @@ unsigned char unit_count;
     }
 }
 
-/* Scans A:..E: for CH375.SYS's IOCTL signature reply. On a match, fetches the full v1
+/* Scans A:..E: for POFOUDSK.SYS's IOCTL signature reply. On a match, fetches the full v1
  * reply and prints a compact driver-mode summary (<=7 lines on the
  * 40x8 screen), and returns 1 (driver mode handled). Returns 0 if no
  * drive answered - caller falls back to direct hardware mode. */
@@ -177,9 +179,9 @@ static unsigned char try_driver_mode()
         if (dos_carry)
             continue;
 
-        if (ioctl_buf[0] != 'C' || ioctl_buf[1] != 'H' || ioctl_buf[2] != '3'
-            || ioctl_buf[3] != '7' || ioctl_buf[4] != '5' || ioctl_buf[5] != 'S'
-            || ioctl_buf[6] != 'Y' || ioctl_buf[7] != 'S')
+        if (ioctl_buf[0] != 'P' || ioctl_buf[1] != 'O' || ioctl_buf[2] != 'F'
+            || ioctl_buf[3] != 'O' || ioctl_buf[4] != 'U' || ioctl_buf[5] != 'D'
+            || ioctl_buf[6] != 'S' || ioctl_buf[7] != 'K')
             continue;
 
         first_letter = 'A' + drive - 1;

@@ -2,16 +2,20 @@
 
 BUILD_DIR := build
 
-# Shared Portfolio library (tinylib etc.). CH375.COM links tinylib.c,
-# which #includes tinynum.c; CH375.SYS links only tinyhex.c (no libc,
-# no varargs) - never both in one program.
+# Shared Portfolio library (tinylib etc.). POFOUDSK.COM links
+# tinylib.c, which #includes tinynum.c; POFOUDSK.SYS links only
+# tinyhex.c (no libc, no varargs) - never both in one program.
 POFOLIB := lib/pofo
 
-CH375_SRC := src/ch375cli.c src/disk.c src/ch375det.c src/ch375part.c src/ch375disk.c src/ch375core.c src/port.c $(POFOLIB)/tinylib.c
-CH375_HDR := src/disk.h src/ch375disk.h src/ch375.h src/port.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c $(POFOLIB)/tinyhex.c $(POFOLIB)/tinydec.c
-CH375_BIN := $(BUILD_DIR)/CH375.COM
+# CH375 chip-level library (lib/pofoch375/README.md) - driver-safe,
+# no src/ or DOS dependency, reusable as-is by a future ROM build.
+POFOCH375 := lib/pofoch375
 
-CH375SYS_BIN := $(BUILD_DIR)/CH375.SYS
+POFOUDSK_COM_SRC := src/ch375cli.c src/disk.c src/part.c src/partpick.c $(POFOCH375)/ch375det.c $(POFOCH375)/ch375disk.c $(POFOCH375)/ch375core.c $(POFOCH375)/port.c $(POFOLIB)/tinylib.c
+POFOUDSK_COM_HDR := src/disk.h src/part.h src/pofoudsk.h $(POFOCH375)/ch375disk.h $(POFOCH375)/ch375.h $(POFOCH375)/port.h $(POFOLIB)/tinylib.h $(POFOLIB)/tinynum.h $(POFOLIB)/tinynum.c $(POFOLIB)/tinyhex.c $(POFOLIB)/tinydec.c
+POFOUDSK_COM_BIN := $(BUILD_DIR)/POFOUDSK.COM
+
+POFOUDSK_SYS_BIN := $(BUILD_DIR)/POFOUDSK.SYS
 
 BCC ?= bcc
 AS86 ?= as86
@@ -32,40 +36,44 @@ DIRFIX_BIN := $(BUILD_DIR)/DIRFIX.COM
 
 all: ch375 sys dirfix
 
-ch375: $(CH375_BIN)
+ch375: $(POFOUDSK_COM_BIN)
 
-sys: $(CH375SYS_BIN)
+sys: $(POFOUDSK_SYS_BIN)
 
 dirfix: $(DIRFIX_BIN)
 
 # Standalone MKDIR/directory-extension fix (see src/dirfix.inc,
-# src/dirfix.asm) - also built into CH375.SYS, see sysdirfix below.
+# src/dirfix.asm) - also built into POFOUDSK.SYS, see sysdirfix below.
 $(DIRFIX_BIN): src/dirfix.asm src/dirfix.inc | $(BUILD_DIR)
 	$(NASM) -f bin -I src/ -o $@ src/dirfix.asm
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(CH375_BIN): $(CH375_SRC) $(CH375_HDR) | $(BUILD_DIR)
-	$(BCC) -Md -I$(POFOLIB) -o $@ $(CH375_SRC)
+$(POFOUDSK_COM_BIN): $(POFOUDSK_COM_SRC) $(POFOUDSK_COM_HDR) | $(BUILD_DIR)
+	$(BCC) -Md -I$(POFOLIB) -I$(POFOCH375) -Isrc -o $@ $(POFOUDSK_COM_SRC)
 
-# CH375.SYS - device header must land at file offset 0, so this uses
+# POFOUDSK.SYS - device header must land at file offset 0, so this uses
 # the as86 -u -o (object) + ld86 -0 -d (tiny/impure link) pipeline
 # instead of as86 -b: as86 -b always places .data before .text regardless of source order,
 # which would push the hand-written header away from offset 0; ld86
 # -d keeps .text/.data/.bss in source order instead. Links only the
 # driver-safe units (no libc, no unsigned-long runtime helpers) - never
-# disk.c/ch375det.c, which are CLI only. See src/sys.h.
-SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk ch375part port
+# disk.c/ch375det.c/partpick.c, which are CLI only. See src/sys.h.
+SYS_UNITS := ch375sys sysfar sysmount sysvdisk ch375core ch375disk part port
 SYS_OBJS := $(patsubst %,$(BUILD_DIR)/%.o,$(SYS_UNITS)) $(BUILD_DIR)/tinyhex.o $(BUILD_DIR)/sysdirfix.o
-SYS_HDR := src/ch375.h src/ch375disk.h src/port.h $(POFOLIB)/tinynum.h src/sys.h src/ch375sys_version.h
+SYS_HDR := $(POFOCH375)/ch375.h $(POFOCH375)/ch375disk.h $(POFOCH375)/port.h src/part.h src/pofoudsk.h $(POFOLIB)/tinynum.h src/sys.h src/pofoudsk_version.h
 
 $(BUILD_DIR)/%.o: src/%.c $(SYS_HDR) | $(BUILD_DIR)
-	$(BCC) -0 -Md -I$(POFOLIB) -S -o $(BUILD_DIR)/$*_bcc.s $<
+	$(BCC) -0 -Md -I$(POFOLIB) -I$(POFOCH375) -S -o $(BUILD_DIR)/$*_bcc.s $<
 	$(AS86) -0 -u -o $@ $(BUILD_DIR)/$*_bcc.s
 
 $(BUILD_DIR)/%.o: $(POFOLIB)/%.c $(SYS_HDR) | $(BUILD_DIR)
-	$(BCC) -0 -Md -I$(POFOLIB) -S -o $(BUILD_DIR)/$*_bcc.s $<
+	$(BCC) -0 -Md -I$(POFOLIB) -I$(POFOCH375) -S -o $(BUILD_DIR)/$*_bcc.s $<
+	$(AS86) -0 -u -o $@ $(BUILD_DIR)/$*_bcc.s
+
+$(BUILD_DIR)/%.o: $(POFOCH375)/%.c $(SYS_HDR) | $(BUILD_DIR)
+	$(BCC) -0 -Md -I$(POFOLIB) -I$(POFOCH375) -S -o $(BUILD_DIR)/$*_bcc.s $<
 	$(AS86) -0 -u -o $@ $(BUILD_DIR)/$*_bcc.s
 
 # DIRFIX glue (see src/dirfix.inc, src/sysdirfix.asm) - nasm assembles
@@ -75,7 +83,7 @@ $(BUILD_DIR)/sysdirfix.o: src/sysdirfix.asm src/dirfix.inc | $(BUILD_DIR)
 
 # ch375sys.o must stay first - its #asm device header has to land at
 # file offset 0.
-$(CH375SYS_BIN): $(SYS_OBJS)
+$(POFOUDSK_SYS_BIN): $(SYS_OBJS)
 	$(LD86) -0 -d -o $@ $(SYS_OBJS)
 
 # Assumes the bridge (or ESP smart-cable client) is already running at
@@ -91,25 +99,25 @@ DEST_DIR_ENC = $(subst \,%5C,$(DEST_DIR))
 UPLOAD_BASE = http://$(HOST):$(PORT)/uploadFile?toAtari=1&overwrite=1
 UPLOAD_URL = $(UPLOAD_BASE)$(if $(DEST_DIR),&destDir=$(DEST_DIR_ENC))
 
-# CH375.SYS goes to the A: memory card by default (C: is too small for
-# both files) - CONFIG.SYS then needs DEVICE=A:\CH375.SYS. Given
+# POFOUDSK.SYS goes to the A: memory card by default (C: is too small for
+# both files) - CONFIG.SYS then needs DEVICE=A:\POFOUDSK.SYS. Given
 # already URL-encoded (%5C = \) for the same trailing-backslash reason
 # as DEST_DIR above; override e.g. make upload-sys SYS_DEST_DIR_ENC=B:%5C
 SYS_DEST_DIR_ENC ?= A:%5C
 
-# upload = both files (CH375.SYS and CH375.COM must match - the IOCTL
+# upload = both files (POFOUDSK.SYS and POFOUDSK.COM must match - the IOCTL
 # reply layout is shared), upload-com / upload-sys = just one. One
 # file per POST, one transfer at a time over the cable.
 upload: upload-sys upload-com
 
-upload-com: $(CH375_BIN)
-	curl -sf -F "file=@$(CH375_BIN)" "$(UPLOAD_URL)"
+upload-com: $(POFOUDSK_COM_BIN)
+	curl -sf -F "file=@$(POFOUDSK_COM_BIN)" "$(UPLOAD_URL)"
 
 upload-dirfix: $(DIRFIX_BIN)
 	curl -sf -F "file=@$(DIRFIX_BIN)" "$(UPLOAD_URL)"
 
-upload-sys: $(CH375SYS_BIN)
-	curl -sf -F "file=@$(CH375SYS_BIN)" "$(UPLOAD_BASE)&destDir=$(SYS_DEST_DIR_ENC)"
+upload-sys: $(POFOUDSK_SYS_BIN)
+	curl -sf -F "file=@$(POFOUDSK_SYS_BIN)" "$(UPLOAD_BASE)&destDir=$(SYS_DEST_DIR_ENC)"
 
 clean:
 	rm -rf $(BUILD_DIR)

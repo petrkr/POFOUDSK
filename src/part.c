@@ -1,14 +1,16 @@
-/* ch375part.c - driver-safe MBR partition table / boot sector BPB
- * parsing and FAT12 suitability check, built on ch375disk.c's
- * streaming ch375disk_read_sector(). Same rules as ch375disk.c: no
- * printf, no unsigned-long helpers, no 512-byte sector buffer - only
- * the few bytes actually needed are captured out of the 64-byte
- * chunks as they stream past. Linked into both CH375.SYS and
- * CH375.COM.
+/* part.c - driver-safe MBR partition table / boot sector BPB parsing
+ * and FAT12 suitability check, built on lib/pofoch375's
+ * ch375disk_read_sector(). Not chip-specific (pure parsing of bytes
+ * already streamed in) - see part.h for the module overview. Same
+ * rules as lib/pofoch375/ch375disk.c: no printf, no unsigned-long
+ * helpers, no 512-byte sector buffer - only the few bytes actually
+ * needed are captured out of the 64-byte chunks as they stream past.
+ * Linked into both POFOUDSK.SYS and POFOUDSK.COM.
  */
 
 #include "ch375.h"
 #include "ch375disk.h"
+#include "part.h"
 
 /* Capture windows, filled by cap_chunk_handler() on every
  * ch375disk_read_mbr()/ch375disk_read_bpb() read:

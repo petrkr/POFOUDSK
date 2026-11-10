@@ -1,8 +1,8 @@
-/* CH375.SYS virtual status disk - whenever a unit has no usable real
+/* POFOUDSK.SYS virtual status disk - whenever a unit has no usable real
  * partition mounted, the driver presents this tiny synthetic, empty,
  * read-only FAT12 disk instead of refusing I/O: its volume label
  * tells why (controller/USB/partition state). Details are available
- * through IOCTL (CH375.COM).
+ * through IOCTL (POFOUDSK.COM).
  *
  * Sectors are generated on the fly straight into the far DOS transfer
  * buffer: far_fill() zeroes the sector, then the few non-zero bytes
@@ -10,7 +10,7 @@
  * 512-byte image or sector buffer kept resident.
  */
 
-#include "ch375disk.h"
+#include "pofoudsk.h"
 #include "tinynum.h"
 #include "sys.h"
 

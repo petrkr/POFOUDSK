@@ -1,5 +1,5 @@
 /* Number-to-text core of tinylib, safe to link where no libc is
-   available at all (CH375.SYS device driver, future ROM code): no
+   available at all (POFOUDSK.SYS device driver, future ROM code): no
    division/modulo - BCC's unsigned div/mod helpers (imodu/idiv_u) live
    in libc - and no varargs. Plain C, so it works with either calling
    convention (-C-f or not).

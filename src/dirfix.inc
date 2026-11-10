@@ -32,7 +32,7 @@
 ;
 ; Everything here is CS-relative (cs: overrides, no DS assumptions) -
 ; this file is included unchanged into both the standalone DIRFIX.COM
-; (src/dirfix.asm) and the CH375.SYS driver glue (src/sysdirfix.asm).
+; (src/dirfix.asm) and the POFOUDSK.SYS driver glue (src/sysdirfix.asm).
 
 DF_ROM_SEG      equ     0E52Dh          ; CS of the DOS routines below
 DF_FILL_IP      equ     18C0h           ; rep stosb (cluster zero fill)
