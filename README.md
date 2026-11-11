@@ -101,17 +101,23 @@ agree on a ROM dump and add DIRFIX support for that version.
 
 ## Known issues
 
-- **After sleep/wake** the driver may stop reacting to plugging and
-  unplugging the flash disk, and disk access ends with a DOS error 11
-  (read fault). Workaround: remove and reinsert the PID card, or reboot.
-  Probable cause (unverified): the CH375 loses power or is reset during
-  sleep and leaves USB host mode without raising an interrupt.
+- **Creating files is slower on drives with more than one sector per
+  cluster**: DIRFIX single-steps DOS during create/`MKDIR`/rename - on
+  spc 4 about 0.5-1 s per created file and 1.5-2 s per `MKDIR` (real
+  HW). Drives with spc 1 are not affected; prefer spc 1 for partitions
+  up to ~2 MB.
+- Rarely, right after plugging in the flash disk or waking up, `DIR`
+  hung or reported an invalid BPB once. Not reproducible yet; a reboot
+  helps. Reports with the exact steps are welcome.
 
 ## Status
 
-Developed and tested mainly in MAME with a real CH375 attached; the
-PID card itself is tested for reading. Not yet verified on real
-hardware: writing via the PID card, resume after sleep/wake.
+Tested on real hardware (PID card): reading, writing, `MKDIR` with
+DIRFIX, hot-plug and resume after sleep/wake (the CH375 loses power
+while the Portfolio sleeps; the driver puts it back into USB host mode
+on the next disk access). Also tested in MAME with a real CH375
+attached. Not yet tested: a 65535-sector partition with 32 sectors per
+cluster.
 
 ## Layout
 
